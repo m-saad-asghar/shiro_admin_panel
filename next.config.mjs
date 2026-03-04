@@ -1,9 +1,9 @@
 /** @type {import('next').NextConfig} */
 const config = {
-  output: 'export',
-
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   images: {
-    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'http',
@@ -23,8 +23,6 @@ const config = {
       },
     ],
   },
-
-  trailingSlash: true,
 };
 
 export default config;

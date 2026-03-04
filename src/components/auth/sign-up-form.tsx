@@ -20,7 +20,6 @@ import { z as zod } from 'zod';
 
 import { paths } from '@/paths';
 import { authClient } from '@/lib/auth/client';
-import { useUser } from '@/hooks/use-user';
 
 const schema = zod.object({
   firstName: zod.string().min(1, { message: 'First name is required' }),
@@ -36,10 +35,7 @@ const defaultValues = { firstName: '', lastName: '', email: '', password: '', te
 
 export function SignUpForm(): React.JSX.Element {
   const router = useRouter();
-
-  const { checkSession } = useUser();
-
-  const [isPending, setIsPending] = React.useState<boolean>(false);
+  const [isPending, setIsPending] = React.useState(false);
 
   const {
     control,
@@ -60,14 +56,10 @@ export function SignUpForm(): React.JSX.Element {
         return;
       }
 
-      // Refresh the auth state
-      await checkSession?.();
-
-      // UserProvider, for this case, will not refresh the router
-      // After refresh, GuestGuard will handle the redirect
+      // Just refresh; guards will do redirect if your auth state is cookie/token based
       router.refresh();
     },
-    [checkSession, router, setError]
+    [router, setError]
   );
 
   return (
@@ -81,6 +73,7 @@ export function SignUpForm(): React.JSX.Element {
           </Link>
         </Typography>
       </Stack>
+
       <form onSubmit={handleSubmit(onSubmit)}>
         <Stack spacing={2}>
           <Controller
@@ -94,17 +87,19 @@ export function SignUpForm(): React.JSX.Element {
               </FormControl>
             )}
           />
+
           <Controller
             control={control}
             name="lastName"
             render={({ field }) => (
-              <FormControl error={Boolean(errors.firstName)}>
+              <FormControl error={Boolean(errors.lastName)}>
                 <InputLabel>Last name</InputLabel>
                 <OutlinedInput {...field} label="Last name" />
-                {errors.firstName ? <FormHelperText>{errors.firstName.message}</FormHelperText> : null}
+                {errors.lastName ? <FormHelperText>{errors.lastName.message}</FormHelperText> : null}
               </FormControl>
             )}
           />
+
           <Controller
             control={control}
             name="email"
@@ -116,6 +111,7 @@ export function SignUpForm(): React.JSX.Element {
               </FormControl>
             )}
           />
+
           <Controller
             control={control}
             name="password"
@@ -127,29 +123,38 @@ export function SignUpForm(): React.JSX.Element {
               </FormControl>
             )}
           />
+
           <Controller
             control={control}
             name="terms"
             render={({ field }) => (
               <div>
                 <FormControlLabel
-                  control={<Checkbox {...field} />}
+                  control={
+                    <Checkbox
+                      checked={Boolean(field.value)}
+                      onChange={(e) => field.onChange(e.target.checked)}
+                    />
+                  }
                   label={
-                    <React.Fragment>
+                    <>
                       I have read the <Link>terms and conditions</Link>
-                    </React.Fragment>
+                    </>
                   }
                 />
                 {errors.terms ? <FormHelperText error>{errors.terms.message}</FormHelperText> : null}
               </div>
             )}
           />
+
           {errors.root ? <Alert color="error">{errors.root.message}</Alert> : null}
+
           <Button disabled={isPending} type="submit" variant="contained">
             Sign up
           </Button>
         </Stack>
       </form>
+
       <Alert color="warning">Created users are not persisted</Alert>
     </Stack>
   );

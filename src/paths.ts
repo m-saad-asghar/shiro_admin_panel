@@ -1,0 +1,18 @@
+export const paths = {
+  home: '/',
+  auth: { signIn: '/auth/sign-in', signUp: '/auth/sign-up', resetPassword: '/auth/reset-password' },
+  dashboard: {
+    overview: '/dashboard',
+    account: '/dashboard/account',
+    customers: '/dashboard/customers',
+    developers: '/dashboard/developers',
+    projects: '/dashboard/projects',
+    listings: '/dashboard/listings',
+    users: '/dashboard/users',
+    roles: '/dashboard/roles',
+    permissions: '/dashboard/permissions',
+    integrations: '/dashboard/integrations',
+    settings: '/dashboard/settings',
+  },
+  errors: { notFound: '/errors/not-found' },
+} as const;

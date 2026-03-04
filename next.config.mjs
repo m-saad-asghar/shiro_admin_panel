@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 const config = {
   output: 'export',
+
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'http',
@@ -21,6 +23,8 @@ const config = {
       },
     ],
   },
+
+  trailingSlash: true,
 };
 
 export default config;

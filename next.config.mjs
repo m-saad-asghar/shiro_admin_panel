@@ -3,7 +3,11 @@ const config = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+
+  output: 'export',
+
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'http',

@@ -19,7 +19,9 @@ const usersImagesUrl = (dynamicPath?: string) => {
   const cleanBase = baseURL.replace(/\/$/, "");
   const cleanPath = dynamicPath.replace(/^\//, "");
 
-  return `${cleanBase}/admin_panel/users/${cleanPath}`;
+  return `${cleanBase}/${cleanPath}`;
+
+  // return `${cleanBase}/admin_panel/users/${cleanPath}`;
 };
 
 export default usersImagesUrl;

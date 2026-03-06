@@ -6,6 +6,8 @@ export const navItems = [
   // { key: 'customers', title: 'Customers', href: paths.dashboard.customers, icon: 'users' },
   { key: 'developers', title: 'Developers', href: paths.dashboard.developers, icon: 'developers' },
   { key: 'projects', title: 'Projects', href: paths.dashboard.projects, icon: 'projects' },
+  { key: 'communities', title: 'Communities', href: paths.dashboard.communities, icon: 'communities' },
+  { key: 'amenities', title: 'Amenities', href: paths.dashboard.amenities, icon: 'amenities' },
   { key: 'listings', title: 'Listings', href: paths.dashboard.listings, icon: 'listings' },
   { key: 'users', title: 'Users', href: paths.dashboard.users, icon: 'users' },
   { key: 'roles', title: 'Roles', href: paths.dashboard.roles, icon: 'roles' },

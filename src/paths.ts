@@ -8,6 +8,8 @@ export const paths = {
     developers: '/dashboard/developers',
     projects: '/dashboard/projects',
     listings: '/dashboard/listings',
+    communities: '/dashboard/communities',
+    amenities: '/dashboard/amenities',
     users: '/dashboard/users',
     roles: '/dashboard/roles',
     permissions: '/dashboard/permissions',

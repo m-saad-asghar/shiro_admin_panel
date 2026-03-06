@@ -659,7 +659,7 @@ export default function Page(): React.JSX.Element {
           sx={{
             width: '100%',
             color: '#fff',
-            backgroundColor: toastSeverity === 'success' ? '#9f8151' : undefined,
+            backgroundColor: toastSeverity === 'success' ? '#094834' : undefined,
             '& .MuiAlert-icon': { color: '#fff' },
           }}
         >

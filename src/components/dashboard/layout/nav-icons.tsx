@@ -10,6 +10,8 @@ import { LockKeyIcon } from '@phosphor-icons/react/dist/ssr/LockKey';
 import { BuildingsIcon } from '@phosphor-icons/react/dist/ssr/Buildings';
 import { BuildingOffice } from '@phosphor-icons/react/dist/ssr/BuildingOffice';
 import { House } from '@phosphor-icons/react/dist/ssr/House';
+import { SparkleIcon } from '@phosphor-icons/react/dist/ssr/Sparkle';
+import { MapPinAreaIcon } from '@phosphor-icons/react/dist/ssr/MapPinArea';
 
 
 
@@ -25,4 +27,6 @@ export const navIcons = {
   listings: BuildingsIcon,
   developers: BuildingOffice,
   projects: House,
+  amenities: SparkleIcon,
+  communities: MapPinAreaIcon
 } as Record<string, Icon>;

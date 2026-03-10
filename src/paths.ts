@@ -10,6 +10,7 @@ export const paths = {
     listings: '/dashboard/listings',
     communities: '/dashboard/communities',
     amenities: '/dashboard/amenities',
+    employees: '/dashboard/employees',
     users: '/dashboard/users',
     roles: '/dashboard/roles',
     permissions: '/dashboard/permissions',

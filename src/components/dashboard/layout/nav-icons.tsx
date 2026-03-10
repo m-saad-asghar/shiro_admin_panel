@@ -12,6 +12,7 @@ import { BuildingOffice } from '@phosphor-icons/react/dist/ssr/BuildingOffice';
 import { House } from '@phosphor-icons/react/dist/ssr/House';
 import { SparkleIcon } from '@phosphor-icons/react/dist/ssr/Sparkle';
 import { MapPinAreaIcon } from '@phosphor-icons/react/dist/ssr/MapPinArea';
+import { IdentificationCardIcon } from '@phosphor-icons/react/dist/ssr/IdentificationCard';
 
 
 
@@ -28,5 +29,6 @@ export const navIcons = {
   developers: BuildingOffice,
   projects: House,
   amenities: SparkleIcon,
-  communities: MapPinAreaIcon
+  communities: MapPinAreaIcon,
+  employees: IdentificationCardIcon
 } as Record<string, Icon>;

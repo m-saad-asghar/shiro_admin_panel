@@ -9,7 +9,7 @@ export const navItems = [
   { key: 'listings', title: 'Listings', href: paths.dashboard.listings, icon: 'listings' },
   { key: 'communities', title: 'Communities', href: paths.dashboard.communities, icon: 'communities' },
   { key: 'amenities', title: 'Amenities', href: paths.dashboard.amenities, icon: 'amenities' },
-  { key: 'employees', title: 'Employees', href: paths.dashboard.employees, icon: 'users' },
+  { key: 'employees', title: 'Employees', href: paths.dashboard.employees, icon: 'employees' },
   { key: 'users', title: 'Users', href: paths.dashboard.users, icon: 'users' },
   { key: 'roles', title: 'Roles', href: paths.dashboard.roles, icon: 'roles' },
   { key: 'permissions', title: 'Permissions', href: paths.dashboard.permissions, icon: 'permissions' },

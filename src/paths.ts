@@ -11,6 +11,8 @@ export const paths = {
     communities: '/dashboard/communities',
     amenities: '/dashboard/amenities',
     employees: '/dashboard/employees',
+    departments: '/dashboard/departments',
+    positions: '/dashboard/positions',
     users: '/dashboard/users',
     roles: '/dashboard/roles',
     permissions: '/dashboard/permissions',

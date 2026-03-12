@@ -13,6 +13,8 @@ import { House } from '@phosphor-icons/react/dist/ssr/House';
 import { SparkleIcon } from '@phosphor-icons/react/dist/ssr/Sparkle';
 import { MapPinAreaIcon } from '@phosphor-icons/react/dist/ssr/MapPinArea';
 import { IdentificationCardIcon } from '@phosphor-icons/react/dist/ssr/IdentificationCard';
+import { SquaresFourIcon } from '@phosphor-icons/react/dist/ssr/SquaresFour';
+import { BriefcaseIcon } from '@phosphor-icons/react/dist/ssr/Briefcase';
 
 
 
@@ -30,5 +32,7 @@ export const navIcons = {
   projects: House,
   amenities: SparkleIcon,
   communities: MapPinAreaIcon,
-  employees: IdentificationCardIcon
+  employees: IdentificationCardIcon,
+  departments: SquaresFourIcon,
+  positions: BriefcaseIcon,
 } as Record<string, Icon>;

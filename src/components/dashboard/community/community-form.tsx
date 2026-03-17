@@ -2,7 +2,8 @@
 
 import * as React from 'react';
 import { CKEditor } from '@ckeditor/ckeditor5-react';
-import { ClassicEditor } from 'ckeditor5';
+import { ClassicEditor, Essentials, Paragraph, Bold, Italic } from 'ckeditor5';
+import 'ckeditor5/ckeditor5.css';
 
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -76,6 +77,11 @@ function CkEditorField({
       >
         <CKEditor
           editor={ClassicEditor}
+          config={{
+                      licenseKey: 'GPL',
+                      plugins: [Essentials, Paragraph, Bold, Italic],
+                      toolbar: ['undo', 'redo', '|', 'bold', 'italic']
+                    }}
           data={value || ''}
           onChange={(_, editor) => {
             onChange(editor.getData());

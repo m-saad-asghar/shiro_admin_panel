@@ -4,7 +4,8 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
 import { CKEditor } from '@ckeditor/ckeditor5-react';
-import { ClassicEditor } from 'ckeditor5';
+import { ClassicEditor, Essentials, Paragraph, Bold, Italic } from 'ckeditor5';
+import 'ckeditor5/ckeditor5.css';
 
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -246,6 +247,11 @@ function CkEditorField({
       >
         <CKEditor
           editor={ClassicEditor}
+          config={{
+                      licenseKey: 'GPL',
+                      plugins: [Essentials, Paragraph, Bold, Italic],
+                      toolbar: ['undo', 'redo', '|', 'bold', 'italic']
+                    }}
           data={value || ''}
           onChange={(_, editor) => {
             onChange(editor.getData());

@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 
 import { CKEditor } from '@ckeditor/ckeditor5-react';
-import ClassicEditor from '@ckeditor/ckeditor5-build-classic';
+import { ClassicEditor } from 'ckeditor5';
 
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';

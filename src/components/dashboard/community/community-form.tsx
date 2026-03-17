@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { CKEditor } from '@ckeditor/ckeditor5-react';
-import ClassicEditor from '@ckeditor/ckeditor5-build-classic';
+import { ClassicEditor } from 'ckeditor5';
 
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';

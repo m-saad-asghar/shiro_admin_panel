@@ -19,11 +19,15 @@ export function CommunitiesFilters({
   // debounce search to avoid API spam
   React.useEffect(() => {
     const timer = setTimeout(() => {
-      onSearchChange(localSearch);
+      const trimmed = localSearch.trim();
+
+      if (trimmed !== search) {
+        onSearchChange(trimmed);
+      }
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [localSearch, onSearchChange]);
+  }, [localSearch, search, onSearchChange]);
 
   React.useEffect(() => {
     setLocalSearch(search);
@@ -35,13 +39,16 @@ export function CommunitiesFilters({
         value={localSearch}
         onChange={(e) => setLocalSearch(e.target.value)}
         fullWidth
-        placeholder="Search Community..."
+        placeholder="Search communities..."
         startAdornment={
           <InputAdornment position="start">
             <MagnifyingGlassIcon fontSize="var(--icon-fontSize-md)" />
           </InputAdornment>
         }
         sx={{ maxWidth: 500 }}
+        inputProps={{
+          'aria-label': 'Search communities',
+        }}
       />
     </Card>
   );

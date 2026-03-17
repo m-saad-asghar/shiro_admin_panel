@@ -3,6 +3,9 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 
+import { CKEditor } from '@ckeditor/ckeditor5-react';
+import ClassicEditor from '@ckeditor/ckeditor5-build-classic';
+
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
@@ -49,6 +52,15 @@ type FormErrors = {
   profile_picture?: string;
 };
 
+type CkEditorFieldProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  error?: boolean;
+  helperText?: string;
+  minHeight?: number;
+};
+
 function slugify(input: string): string {
   return input
     .toLowerCase()
@@ -70,6 +82,61 @@ function isValidUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isHtmlEmpty(value: string | null | undefined): boolean {
+  if (!value) return true;
+  const stripped = value
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+  return stripped.length === 0;
+}
+
+function CkEditorField({
+  label,
+  value,
+  onChange,
+  error = false,
+  helperText = '',
+  minHeight = 180,
+}: CkEditorFieldProps): React.JSX.Element {
+  return (
+    <Stack spacing={1}>
+      <Typography variant="subtitle2">{label}</Typography>
+
+      <Box
+        sx={{
+          '& .ck.ck-editor': {
+            width: '100%',
+          },
+          '& .ck-editor__editable_inline': {
+            minHeight: `${minHeight}px`,
+          },
+          '& .ck.ck-toolbar': {
+            borderColor: error ? '#d32f2f' : 'rgba(0,0,0,0.23)',
+          },
+          '& .ck.ck-editor__main > .ck-editor__editable': {
+            borderColor: error ? '#d32f2f' : 'rgba(0,0,0,0.23)',
+          },
+        }}
+      >
+        <CKEditor
+          editor={ClassicEditor}
+          data={value || ''}
+          onChange={(_, editor) => {
+            onChange(editor.getData());
+          }}
+        />
+      </Box>
+
+      {helperText ? (
+        <Typography variant="caption" color={error ? 'error' : 'text.secondary'}>
+          {helperText}
+        </Typography>
+      ) : null}
+    </Stack>
+  );
 }
 
 function normalizeOptions(
@@ -357,7 +424,7 @@ export default function NewEmployeePage(): React.JSX.Element {
     const cleanSorting = sorting.trim();
     const cleanBrn = brn.trim();
     const cleanExperienceSince = experienceSince.trim();
-    const cleanDescription = description.trim();
+    const cleanDescription = description;
 
     const nextErrors: FormErrors = {};
 
@@ -388,6 +455,10 @@ export default function NewEmployeePage(): React.JSX.Element {
 
     if (cleanBrn && Number.isNaN(Number(cleanBrn))) {
       nextErrors.brn = 'BRN must be a number';
+    }
+
+    if (isHtmlEmpty(cleanDescription)) {
+      nextErrors.description = 'Description is required';
     }
 
     setErrors(nextErrors);
@@ -740,18 +811,16 @@ export default function NewEmployeePage(): React.JSX.Element {
             </Grid>
 
             <Grid size={{ xs: 12 }}>
-              <TextField
+              <CkEditorField
                 label="Description"
                 value={description}
-                onChange={(e) => {
-                  setDescription(e.target.value);
+                onChange={(value) => {
+                  setDescription(value);
                   setErrors((prev) => ({ ...prev, description: undefined }));
                 }}
-                multiline
-                minRows={4}
-                fullWidth
                 error={Boolean(errors.description)}
                 helperText={errors.description || ''}
+                minHeight={220}
               />
             </Grid>
           </Grid>
@@ -773,7 +842,6 @@ export default function NewEmployeePage(): React.JSX.Element {
                   background: '#fafafa',
                 }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={profilePicturePreview}
                   alt="Profile preview"

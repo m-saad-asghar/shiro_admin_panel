@@ -3,6 +3,9 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 
+import { CKEditor } from '@ckeditor/ckeditor5-react';
+import ClassicEditor from '@ckeditor/ckeditor5-build-classic';
+
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
@@ -18,13 +21,6 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 
 import FormControl from '@mui/material/FormControl';
-import InputLabel from '@mui/material/InputLabel';
-import Select from '@mui/material/Select';
-import MenuItem from '@mui/material/MenuItem';
-import Checkbox from '@mui/material/Checkbox';
-import ListItemText from '@mui/material/ListItemText';
-import OutlinedInput from '@mui/material/OutlinedInput';
-
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 
@@ -49,7 +45,7 @@ type ProjectCreate = {
   brochure: string | null;
 
   community_id: number;
-  community_name: string;   // ✅ add this
+  community_name: string;
   developer_id: number;
 
   starting_price: string | null;
@@ -67,11 +63,11 @@ type FaqRow = {
 
 type FloorplanRow = {
   title: string;
-  image: string; // filename
+  image: string;
 };
 
 type ImageRow = {
-  image: string; // filename
+  image: string;
 };
 
 type PaymentPlanRow = {
@@ -89,7 +85,7 @@ type LocationRow = {
 type UspRow = {
   title: string;
   description: string;
-  main_image: string; // filename
+  main_image: string;
 };
 
 type FormErrors = Record<string, string>;
@@ -102,6 +98,70 @@ function slugify(input: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 256);
+}
+
+function isHtmlEmpty(value: string | null | undefined): boolean {
+  if (!value) return true;
+  const stripped = value
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+  return stripped.length === 0;
+}
+
+type CkEditorFieldProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  error?: boolean;
+  helperText?: string;
+  minHeight?: number;
+};
+
+function CkEditorField({
+  label,
+  value,
+  onChange,
+  error = false,
+  helperText = '',
+  minHeight = 180,
+}: CkEditorFieldProps): React.JSX.Element {
+  return (
+    <Stack spacing={1}>
+      <Typography variant="subtitle2">{label}</Typography>
+
+      <Box
+        sx={{
+          '& .ck.ck-editor': {
+            width: '100%',
+          },
+          '& .ck-editor__editable_inline': {
+            minHeight: `${minHeight}px`,
+          },
+          '& .ck.ck-toolbar': {
+            borderColor: error ? '#d32f2f' : 'rgba(0,0,0,0.23)',
+          },
+          '& .ck.ck-editor__main > .ck-editor__editable': {
+            borderColor: error ? '#d32f2f' : 'rgba(0,0,0,0.23)',
+          },
+        }}
+      >
+        <CKEditor
+          editor={ClassicEditor}
+          data={value || ''}
+          onChange={(_, editor) => {
+            onChange(editor.getData());
+          }}
+        />
+      </Box>
+
+      {helperText ? (
+        <Typography variant="caption" color={error ? 'error' : 'text.secondary'}>
+          {helperText}
+        </Typography>
+      ) : null}
+    </Stack>
+  );
 }
 
 const TRASH_COLOR = '#9f8151';
@@ -132,7 +192,7 @@ export default function NewProjectPage(): React.JSX.Element {
     main_image: '',
     brochure: '',
     community_id: 0,
-    community_name: '',   // ✅ add this
+    community_name: '',
     developer_id: 0,
     starting_price: '',
     handover: '',
@@ -143,13 +203,11 @@ export default function NewProjectPage(): React.JSX.Element {
 
   const [slugManuallyEdited, setSlugManuallyEdited] = React.useState(false);
 
-  // dropdown data
   const [communities, setCommunities] = React.useState<DropdownItem[]>([]);
   const [developers, setDevelopers] = React.useState<DropdownItem[]>([]);
   const [amenities, setAmenities] = React.useState<DropdownItem[]>([]);
   const [selectedAmenityIds, setSelectedAmenityIds] = React.useState<number[]>([]);
 
-  // sections
   const [faqs, setFaqs] = React.useState<FaqRow[]>([]);
   const [floorplans, setFloorplans] = React.useState<FloorplanRow[]>([]);
   const [images, setImages] = React.useState<ImageRow[]>([]);
@@ -161,11 +219,6 @@ export default function NewProjectPage(): React.JSX.Element {
     main_image: '',
   });
 
-  // ===============================
-  // FILE STATE (uploaders)
-  // ===============================
-
-  // Project main image
   const [projectMainImageFile, setProjectMainImageFile] = React.useState<File | null>(null);
   const [projectMainImagePreview, setProjectMainImagePreview] = React.useState<string | null>(null);
   const projectMainImageRef = React.useRef<HTMLInputElement | null>(null);
@@ -179,8 +232,7 @@ export default function NewProjectPage(): React.JSX.Element {
     const url = URL.createObjectURL(projectMainImageFile);
     setProjectMainImagePreview(url);
     return () => URL.revokeObjectURL(url);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectMainImageFile]);
+  }, [projectMainImageFile, projectMainImagePreview]);
 
   const removeProjectMainImage = () => {
     setProjectMainImageFile(null);
@@ -188,7 +240,6 @@ export default function NewProjectPage(): React.JSX.Element {
     setProject((p) => ({ ...p, main_image: '' }));
   };
 
-  // Brochure (PDF)
   const [brochureFile, setBrochureFile] = React.useState<File | null>(null);
   const brochureRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -198,7 +249,6 @@ export default function NewProjectPage(): React.JSX.Element {
     setProject((p) => ({ ...p, brochure: '' }));
   };
 
-  // USP main image
   const [uspMainImageFile, setUspMainImageFile] = React.useState<File | null>(null);
   const [uspMainImagePreview, setUspMainImagePreview] = React.useState<string | null>(null);
   const uspMainImageRef = React.useRef<HTMLInputElement | null>(null);
@@ -212,8 +262,7 @@ export default function NewProjectPage(): React.JSX.Element {
     const url = URL.createObjectURL(uspMainImageFile);
     setUspMainImagePreview(url);
     return () => URL.revokeObjectURL(url);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uspMainImageFile]);
+  }, [uspMainImageFile, uspMainImagePreview]);
 
   const removeUspMainImage = () => {
     setUspMainImageFile(null);
@@ -221,7 +270,6 @@ export default function NewProjectPage(): React.JSX.Element {
     setUsp((u) => ({ ...u, main_image: '' }));
   };
 
-  // Floorplan files by index
   const [floorplanFiles, setFloorplanFiles] = React.useState<Record<number, File | null>>({});
   const [floorplanPreviews, setFloorplanPreviews] = React.useState<Record<number, string | null>>({});
   const floorplanInputRefs = React.useRef<Record<number, HTMLInputElement | null>>({});
@@ -230,8 +278,7 @@ export default function NewProjectPage(): React.JSX.Element {
     return () => {
       Object.values(floorplanPreviews).forEach((u) => u && URL.revokeObjectURL(u));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [floorplanPreviews]);
 
   const setFloorplanFileAt = (idx: number, file: File | null) => {
     const oldUrl = floorplanPreviews[idx];
@@ -248,7 +295,6 @@ export default function NewProjectPage(): React.JSX.Element {
     setFloorplanPreviews((p) => ({ ...p, [idx]: url }));
   };
 
-  // Gallery image files by index
   const [galleryFiles, setGalleryFiles] = React.useState<Record<number, File | null>>({});
   const [galleryPreviews, setGalleryPreviews] = React.useState<Record<number, string | null>>({});
   const galleryInputRefs = React.useRef<Record<number, HTMLInputElement | null>>({});
@@ -257,8 +303,7 @@ export default function NewProjectPage(): React.JSX.Element {
     return () => {
       Object.values(galleryPreviews).forEach((u) => u && URL.revokeObjectURL(u));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [galleryPreviews]);
 
   const setGalleryFileAt = (idx: number, file: File | null) => {
     const oldUrl = galleryPreviews[idx];
@@ -274,8 +319,6 @@ export default function NewProjectPage(): React.JSX.Element {
     setGalleryFiles((p) => ({ ...p, [idx]: file }));
     setGalleryPreviews((p) => ({ ...p, [idx]: url }));
   };
-
-  // ===============================
 
   const showToast = (message: string, severity: 'success' | 'error') => {
     setToastMsg(message);
@@ -298,7 +341,6 @@ export default function NewProjectPage(): React.JSX.Element {
     return msg || null;
   };
 
-  // slug auto
   React.useEffect(() => {
     if (!slugManuallyEdited) {
       setProject((p) => ({ ...p, slug: slugify(p.name) }));
@@ -309,7 +351,6 @@ export default function NewProjectPage(): React.JSX.Element {
     }
   }, [project.name, slugManuallyEdited]);
 
-  // load dropdowns
   React.useEffect(() => {
     const run = async () => {
       if (!apiBase) return;
@@ -368,8 +409,7 @@ export default function NewProjectPage(): React.JSX.Element {
     };
 
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase]);
+  }, [apiBase, COMMUNITIES_ENDPOINT, DEVELOPERS_ENDPOINT, AMENITIES_ENDPOINT]);
 
   const validate = (): boolean => {
     const next: FormErrors = {};
@@ -404,11 +444,12 @@ export default function NewProjectPage(): React.JSX.Element {
 
     locations.forEach((loc, i) => {
       if (!loc.title.trim()) next[`locations.${i}.title`] = 'Title required';
-      if (!loc.description.trim()) next[`locations.${i}.description`] = 'Description required';
-      // ✅ removed main_image validation
+      if (isHtmlEmpty(loc.description)) next[`locations.${i}.description`] = 'Description required';
     });
 
-    if (usp.title.trim() && !usp.description.trim()) next.usp_description = 'USP description required if USP title exists';
+    if (usp.title.trim() && isHtmlEmpty(usp.description)) {
+      next.usp_description = 'USP description required if USP title exists';
+    }
 
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -447,32 +488,25 @@ export default function NewProjectPage(): React.JSX.Element {
       const formData = new FormData();
       formData.append('payload', JSON.stringify(payloadBody));
 
-      // 1) Main Project Image
       if (projectMainImageFile) {
         formData.append('project_main_image', projectMainImageFile);
       }
 
-      // 2) USP Main Image
       if (uspMainImageFile) {
         formData.append('usp_main_image', uspMainImageFile);
       }
 
-      // 3) Brochure PDF
       if (brochureFile) {
         formData.append('brochure', brochureFile);
       }
 
-      // 4) Floorplan images
       Object.entries(floorplanFiles).forEach(([idx, file]) => {
         if (file) formData.append(`floorplan_images[${idx}]`, file);
       });
 
-      // 5) Gallery images
       Object.entries(galleryFiles).forEach(([idx, file]) => {
         if (file) formData.append(`gallery_images[${idx}]`, file);
       });
-
-      // ✅ removed location_images upload entirely
 
       const res = await fetch(CREATE_ENDPOINT, {
         method: 'POST',
@@ -504,11 +538,6 @@ export default function NewProjectPage(): React.JSX.Element {
       setSaving(false);
     }
   };
-
-  const amenitiesLabel = React.useMemo(() => {
-    const map = new Map(amenities.map((a) => [a.id, a.name]));
-    return selectedAmenityIds.map((id) => map.get(id) || String(id)).join(', ');
-  }, [amenities, selectedAmenityIds]);
 
   return (
     <Stack spacing={3} component="form" onSubmit={handleCreate}>
@@ -570,16 +599,13 @@ export default function NewProjectPage(): React.JSX.Element {
             helperText={errors.slug || 'Auto from name unless edited.'}
           />
 
-          <TextField
+          <CkEditorField
             label="Description"
             value={project.description ?? ''}
-            onChange={(e) => setProject((p) => ({ ...p, description: e.target.value }))}
-            fullWidth
-            multiline
-            minRows={4}
+            onChange={(value) => setProject((p) => ({ ...p, description: value }))}
+            minHeight={220}
           />
 
-          {/* Main image uploader */}
           <Stack spacing={1}>
             <Typography variant="subtitle2">Main Image</Typography>
 
@@ -597,7 +623,6 @@ export default function NewProjectPage(): React.JSX.Element {
                   background: '#fafafa',
                 }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={projectMainImagePreview}
                   alt="Main image preview"
@@ -637,7 +662,6 @@ export default function NewProjectPage(): React.JSX.Element {
             </Stack>
           </Stack>
 
-          {/* Brochure PDF uploader */}
           <Stack spacing={1}>
             <Typography variant="subtitle2">Brochure (PDF)</Typography>
 
@@ -672,9 +696,7 @@ export default function NewProjectPage(): React.JSX.Element {
             </Stack>
           </Stack>
 
-          {/* Community + Developer dropdowns */}
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-            {/* COMMUNITY */}
             <FormControl fullWidth error={Boolean(errors.community_id)} disabled={loadingDropdowns || saving}>
               <Autocomplete
                 options={communities}
@@ -708,7 +730,6 @@ export default function NewProjectPage(): React.JSX.Element {
               />
             </FormControl>
 
-            {/* DEVELOPER */}
             <FormControl fullWidth error={Boolean(errors.developer_id)} disabled={loadingDropdowns || saving}>
               <Autocomplete
                 options={developers}
@@ -762,19 +783,20 @@ export default function NewProjectPage(): React.JSX.Element {
               onChange={(e) => setProject((p) => ({ ...p, payment_plan: e.target.value }))}
               fullWidth
             />
-            <TextField
-              label="Payment Plan Description"
-              value={project.payment_plan_description ?? ''}
-              onChange={(e) => setProject((p) => ({ ...p, payment_plan_description: e.target.value }))}
-              fullWidth
-              multiline
-              minRows={3}
-            />
+
+            <Box sx={{ width: '100%' }}>
+              <CkEditorField
+                label="Payment Plan Description"
+                value={project.payment_plan_description ?? ''}
+                onChange={(value) => setProject((p) => ({ ...p, payment_plan_description: value }))}
+                minHeight={180}
+              />
+            </Box>
           </Stack>
         </Stack>
       </Paper>
 
-      {/* AMENITIES (multi select) */}
+      {/* AMENITIES */}
       <Paper sx={{ p: 3 }}>
         <Typography variant="h6">Amenities</Typography>
         <Divider sx={{ my: 2 }} />
@@ -814,12 +836,7 @@ export default function NewProjectPage(): React.JSX.Element {
                 />
               ))
             }
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Select Amenities"
-              />
-            )}
+            renderInput={(params) => <TextField {...params} label="Select Amenities" />}
           />
         </FormControl>
       </Paper>
@@ -830,17 +847,20 @@ export default function NewProjectPage(): React.JSX.Element {
         <Divider sx={{ my: 2 }} />
 
         <Stack spacing={2}>
-          <TextField label="USP Title" value={usp.title} onChange={(e) => setUsp((u) => ({ ...u, title: e.target.value }))} fullWidth />
-
           <TextField
+            label="USP Title"
+            value={usp.title}
+            onChange={(e) => setUsp((u) => ({ ...u, title: e.target.value }))}
+            fullWidth
+          />
+
+          <CkEditorField
             label="USP Description"
             value={usp.description}
-            onChange={(e) => setUsp((u) => ({ ...u, description: e.target.value }))}
-            multiline
-            minRows={4}
-            fullWidth
+            onChange={(value) => setUsp((u) => ({ ...u, description: value }))}
             error={Boolean(errors.usp_description)}
             helperText={errors.usp_description || ''}
+            minHeight={180}
           />
 
           <Stack spacing={1}>
@@ -860,7 +880,6 @@ export default function NewProjectPage(): React.JSX.Element {
                   background: '#fafafa',
                 }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={uspMainImagePreview}
                   alt="USP image preview"
@@ -1014,7 +1033,6 @@ export default function NewProjectPage(): React.JSX.Element {
                         background: '#fafafa',
                       }}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={floorplanPreviews[idx] as string}
                         alt={`Floorplan ${idx + 1} preview`}
@@ -1124,7 +1142,6 @@ export default function NewProjectPage(): React.JSX.Element {
                         background: '#fafafa',
                       }}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={galleryPreviews[idx] as string}
                         alt={`Gallery ${idx + 1} preview`}
@@ -1298,18 +1315,15 @@ export default function NewProjectPage(): React.JSX.Element {
                   helperText={errors[`locations.${idx}.title`] || ''}
                 />
 
-                <TextField
+                <CkEditorField
                   label="Description *"
                   value={loc.description}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setLocations((prev) => prev.map((x, i) => (i === idx ? { ...x, description: v } : x)));
+                  onChange={(value) => {
+                    setLocations((prev) => prev.map((x, i) => (i === idx ? { ...x, description: value } : x)));
                   }}
-                  fullWidth
-                  multiline
-                  minRows={3}
                   error={Boolean(errors[`locations.${idx}.description`])}
                   helperText={errors[`locations.${idx}.description`] || ''}
+                  minHeight={180}
                 />
 
                 <TextField
@@ -1327,7 +1341,7 @@ export default function NewProjectPage(): React.JSX.Element {
         </Stack>
       </Paper>
 
-      {/* ✅ ACTIVE ONLY AT THE END */}
+      {/* ACTIVE ONLY AT THE END */}
       <Paper sx={{ p: 3 }}>
         <Typography variant="h6">Status</Typography>
         <Divider sx={{ my: 2 }} />

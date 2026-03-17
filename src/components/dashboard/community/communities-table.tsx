@@ -24,7 +24,13 @@ import { useSelection } from '@/hooks/use-selection';
 export interface Community {
   id: string;
   name: string;
-  active: boolean; // ✅ required
+  slug: string;
+  description?: string | null;
+  selling_point?: string | null;
+  about?: string | null;
+  main_image?: string | null;
+  is_area: boolean;
+  active: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -40,8 +46,6 @@ interface CommunitiesTableProps {
 
   onEdit?: (community: Community) => void;
   onDelete?: (community: Community) => void;
-
-  // ✅ NEW: toggle handler
   onToggleStatus?: (community: Community, nextActive: boolean) => void;
 }
 
@@ -66,10 +70,7 @@ export function CommunitiesTable({
           <TableHead>
             <TableRow>
               <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
-
-              {/* ✅ NEW */}
               <TableCell sx={{ fontWeight: 700, width: 170 }}>Status</TableCell>
-
               <TableCell align="right" sx={{ width: 140, fontWeight: 700 }}>
                 Actions
               </TableCell>
@@ -86,7 +87,6 @@ export function CommunitiesTable({
                     <Typography variant="subtitle2">{row.name}</Typography>
                   </TableCell>
 
-                  {/* ✅ NEW */}
                   <TableCell>
                     <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                       <Switch
@@ -94,13 +94,13 @@ export function CommunitiesTable({
                         onChange={(e) => onToggleStatus?.(row, e.target.checked)}
                         disabled={!onToggleStatus}
                         sx={{
-    '& .MuiSwitch-switchBase.Mui-checked': {
-      color: '#0b4a35',
-    },
-    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-      backgroundColor: '#0b4a35',
-    },
-  }}
+                          '& .MuiSwitch-switchBase.Mui-checked': {
+                            color: '#0b4a35',
+                          },
+                          '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                            backgroundColor: '#0b4a35',
+                          },
+                        }}
                         inputProps={{ 'aria-label': `Toggle status for ${row.name}` }}
                       />
                       <Typography variant="body2" color="text.secondary">

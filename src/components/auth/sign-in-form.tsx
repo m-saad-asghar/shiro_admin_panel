@@ -119,7 +119,7 @@ export function SignInForm(): React.JSX.Element {
         // ✅ single source of truth: context handles localStorage too
         signIn({ token, user, raw: data });
 
-        router.push(paths.dashboard.overview);
+        router.push('/dashboard/developers');
         router.refresh();
       } catch {
         setError('root', { type: 'server', message: 'Network error. Check API/CORS.' });

@@ -30,7 +30,7 @@ type Props = {
   rowsPerPage: number;
   onPageChange: (event: unknown, newPage: number) => void;
   onRowsPerPageChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onEdit: (row: PermissionGroupRow) => void;
+  onEdit?: (row: PermissionGroupRow) => void;
 };
 
 export function PermissionsTable({
@@ -42,6 +42,9 @@ export function PermissionsTable({
   onRowsPerPageChange,
   onEdit,
 }: Props): React.JSX.Element {
+  const canEdit = Boolean(onEdit);
+  const showActions = canEdit;
+
   return (
     <Paper variant="outlined">
       <TableContainer>
@@ -50,16 +53,19 @@ export function PermissionsTable({
             <TableRow>
               <TableCell sx={{ fontWeight: 700, width: 260 }}>Role</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Permissions</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: 90 }} align="right">
-                Actions
-              </TableCell>
+
+              {showActions ? (
+                <TableCell sx={{ fontWeight: 700, width: 90 }} align="right">
+                  Actions
+                </TableCell>
+              ) : null}
             </TableRow>
           </TableHead>
 
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3}>
+                <TableCell colSpan={showActions ? 3 : 2}>
                   <Typography variant="body2" color="text.secondary">
                     No data found.
                   </Typography>
@@ -89,9 +95,8 @@ export function PermissionsTable({
                               color: '#fff',
                               fontWeight: 500,
                               '& .MuiChip-label': { color: '#fff' },
-                              padding: '10px',
-                              paddingTop: '20px',
-                              paddingBottom: '20px'
+                              px: 1,
+                              py: 2.5,
                             }}
                           />
                         ))
@@ -99,13 +104,19 @@ export function PermissionsTable({
                     </Box>
                   </TableCell>
 
-                  <TableCell align="right">
-                    <Tooltip title="Edit">
-                      <IconButton onClick={() => onEdit(row)} size="small"  style={{color: "#9f8151"}}>
-                        <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
+                  {showActions ? (
+                    <TableCell align="right">
+                      <Tooltip title="Edit">
+                        <IconButton
+                          onClick={() => onEdit?.(row)}
+                          size="small"
+                          sx={{ color: '#9f8151' }}
+                        >
+                          <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))
             )}

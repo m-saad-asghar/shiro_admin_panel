@@ -19,8 +19,8 @@ type ApiDeveloper = {
   id: number;
   name: string;
   email: string;
-  logo: string | null;      // filename only
-  thumbnail: string | null; // filename only
+  logo: string | null;
+  thumbnail: string | null;
   active: number;
   created_at: string | null;
   updated_at: string | null;
@@ -53,6 +53,20 @@ type ApiBasicResponse = {
   errors?: Record<string, string[]>;
 };
 
+type AdminPayload = {
+  access_token?: string;
+  permissions?: Array<string | { name?: string; title?: string }>;
+  user?: {
+    permissions?: Array<string | { name?: string; title?: string }>;
+    role?: {
+      permissions?: Array<string | { name?: string; title?: string }>;
+    };
+    roles?: Array<{
+      permissions?: Array<string | { name?: string; title?: string }>;
+    }>;
+  };
+};
+
 export default function Page(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -63,6 +77,9 @@ export default function Page(): React.JSX.Element {
   const [rows, setRows] = React.useState<DeveloperRow[]>([]);
   const [totalCount, setTotalCount] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
+
+  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
+  const [userPermissions, setUserPermissions] = React.useState<string[]>([]);
 
   const [toastOpen, setToastOpen] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState('');
@@ -76,15 +93,79 @@ export default function Page(): React.JSX.Element {
     setToastOpen(true);
   }, []);
 
-  const getAccessToken = (): string => {
+  const getAdminPayload = (): AdminPayload => {
     const payloadStr = localStorage.getItem('admin_login_payload');
     if (!payloadStr) throw new Error('admin_login_payload not found');
-    const payload = JSON.parse(payloadStr);
-    if (!payload?.access_token) throw new Error('access_token missing');
-    return payload.access_token;
+
+    try {
+      return JSON.parse(payloadStr) as AdminPayload;
+    } catch {
+      throw new Error('admin_login_payload is not valid JSON');
+    }
   };
 
-  // ✅ toast from URL (?toast=success|error&msg=...)
+  const getAccessToken = (): string => {
+    const payload = getAdminPayload();
+    if (!payload?.access_token) throw new Error('access_token missing');
+    return String(payload.access_token);
+  };
+
+  const extractPermissionNames = React.useCallback((payload: AdminPayload): string[] => {
+    const result = new Set<string>();
+
+    const pushPermissions = (items?: Array<string | { name?: string; title?: string }>) => {
+      if (!Array.isArray(items)) return;
+
+      items.forEach((item) => {
+        if (typeof item === 'string') {
+          if (item.trim()) result.add(item.trim());
+          return;
+        }
+
+        if (item?.name && String(item.name).trim()) {
+          result.add(String(item.name).trim());
+          return;
+        }
+
+        if (item?.title && String(item.title).trim()) {
+          result.add(String(item.title).trim());
+        }
+      });
+    };
+
+    pushPermissions(payload.permissions);
+    pushPermissions(payload.user?.permissions);
+    pushPermissions(payload.user?.role?.permissions);
+
+    if (Array.isArray(payload.user?.roles)) {
+      payload.user.roles.forEach((role) => pushPermissions(role.permissions));
+    }
+
+    return Array.from(result);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const payload = getAdminPayload();
+      const permissions = extractPermissionNames(payload);
+      setUserPermissions(permissions);
+    } catch (err) {
+      console.error(err);
+      setUserPermissions([]);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, [extractPermissionNames]);
+
+  const hasPermission = React.useCallback(
+    (permission: string) => userPermissions.includes(permission),
+    [userPermissions]
+  );
+
+  const canRead = hasPermission('developers_read');
+  const canCreate = hasPermission('developers_create');
+  const canUpdate = hasPermission('developers_update');
+
   React.useEffect(() => {
     const toast = searchParams.get('toast');
     const msg = searchParams.get('msg');
@@ -95,7 +176,6 @@ export default function Page(): React.JSX.Element {
     }
   }, [router, searchParams, showToast]);
 
-  // Fetch Developers
   const fetchDevelopers = React.useCallback(async () => {
     try {
       setLoading(true);
@@ -135,6 +215,8 @@ export default function Page(): React.JSX.Element {
       setTotalCount(json.pagination?.total ?? mapped.length);
     } catch (err) {
       console.error(err);
+      setRows([]);
+      setTotalCount(0);
       showToast(err instanceof Error ? err.message : 'Fetch failed', 'error');
     } finally {
       setLoading(false);
@@ -142,20 +224,37 @@ export default function Page(): React.JSX.Element {
   }, [apiBase, page, rowsPerPage, search, showToast]);
 
   React.useEffect(() => {
+    if (!permissionsLoaded) return;
+
+    if (!canRead) {
+      setLoading(false);
+      setRows([]);
+      setTotalCount(0);
+      return;
+    }
+
     void fetchDevelopers();
-  }, [fetchDevelopers]);
+  }, [fetchDevelopers, permissionsLoaded, canRead]);
 
   React.useEffect(() => {
     setPage(0);
   }, [search]);
 
-  // ✅ Edit navigation (THIS is what you were missing)
   const handleEditDeveloper = (developer: DeveloperRow) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update developers.', 'error');
+      return;
+    }
+
     router.push(`/dashboard/developers/${developer.id}/edit`);
   };
 
-  // Toggle status
   const handleToggleDeveloper = async (developer: DeveloperRow, active: 0 | 1) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update developers.', 'error');
+      return;
+    }
+
     const previous = developer.active;
 
     try {
@@ -196,14 +295,42 @@ export default function Page(): React.JSX.Element {
     }
   };
 
+  if (!permissionsLoaded) {
+    return (
+      <Stack spacing={3}>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <CircularProgress size={20} />
+          <Typography>Checking permissions...</Typography>
+        </Stack>
+      </Stack>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Developers</Typography>
+        <Alert severity="error" variant="filled">
+          You do not have permission to view developers.
+        </Alert>
+      </Stack>
+    );
+  }
+
   return (
     <Stack spacing={3}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h4">Developers</Typography>
 
-        <Button startIcon={<PlusIcon />} variant="contained" onClick={() => router.push('/dashboard/developers/new')}>
-          Add Developer
-        </Button>
+        {canCreate ? (
+          <Button
+            startIcon={<PlusIcon />}
+            variant="contained"
+            onClick={() => router.push('/dashboard/developers/new')}
+          >
+            Add Developer
+          </Button>
+        ) : null}
       </Stack>
 
       <DevelopersFilters search={search} onSearchChange={setSearch} />
@@ -224,8 +351,8 @@ export default function Page(): React.JSX.Element {
             setRowsPerPage(parseInt(e.target.value, 10));
             setPage(0);
           }}
-          onToggle={handleToggleDeveloper}
-          onEdit={handleEditDeveloper}   // ✅ THIS LINE makes pencil open edit page
+          onToggle={canUpdate ? handleToggleDeveloper : undefined}
+          onEdit={canUpdate ? handleEditDeveloper : undefined}
         />
       )}
 

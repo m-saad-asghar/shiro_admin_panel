@@ -57,6 +57,20 @@ type ApiBasicResponse = {
   errors?: Record<string, string[]>;
 };
 
+type AdminPayload = {
+  access_token?: string;
+  permissions?: Array<string | { name?: string; title?: string }>;
+  user?: {
+    permissions?: Array<string | { name?: string; title?: string }>;
+    role?: {
+      permissions?: Array<string | { name?: string; title?: string }>;
+    };
+    roles?: Array<{
+      permissions?: Array<string | { name?: string; title?: string }>;
+    }>;
+  };
+};
+
 export default function Page(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -67,6 +81,9 @@ export default function Page(): React.JSX.Element {
   const [rows, setRows] = React.useState<EmployeeRow[]>([]);
   const [totalCount, setTotalCount] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
+
+  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
+  const [userPermissions, setUserPermissions] = React.useState<string[]>([]);
 
   const [toastOpen, setToastOpen] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState('');
@@ -80,13 +97,78 @@ export default function Page(): React.JSX.Element {
     setToastOpen(true);
   }, []);
 
-  const getAccessToken = (): string => {
+  const getAdminPayload = (): AdminPayload => {
     const payloadStr = localStorage.getItem('admin_login_payload');
     if (!payloadStr) throw new Error('admin_login_payload not found');
-    const payload = JSON.parse(payloadStr);
-    if (!payload?.access_token) throw new Error('access_token missing');
-    return payload.access_token;
+
+    try {
+      return JSON.parse(payloadStr) as AdminPayload;
+    } catch {
+      throw new Error('admin_login_payload is not valid JSON');
+    }
   };
+
+  const getAccessToken = (): string => {
+    const payload = getAdminPayload();
+    if (!payload?.access_token) throw new Error('access_token missing');
+    return String(payload.access_token);
+  };
+
+  const extractPermissionNames = React.useCallback((payload: AdminPayload): string[] => {
+    const result = new Set<string>();
+
+    const pushPermissions = (items?: Array<string | { name?: string; title?: string }>) => {
+      if (!Array.isArray(items)) return;
+
+      items.forEach((item) => {
+        if (typeof item === 'string') {
+          if (item.trim()) result.add(item.trim());
+          return;
+        }
+
+        if (item?.name && String(item.name).trim()) {
+          result.add(String(item.name).trim());
+          return;
+        }
+
+        if (item?.title && String(item.title).trim()) {
+          result.add(String(item.title).trim());
+        }
+      });
+    };
+
+    pushPermissions(payload.permissions);
+    pushPermissions(payload.user?.permissions);
+    pushPermissions(payload.user?.role?.permissions);
+
+    if (Array.isArray(payload.user?.roles)) {
+      payload.user.roles.forEach((role) => pushPermissions(role.permissions));
+    }
+
+    return Array.from(result);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const payload = getAdminPayload();
+      const permissions = extractPermissionNames(payload);
+      setUserPermissions(permissions);
+    } catch (err) {
+      console.error(err);
+      setUserPermissions([]);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, [extractPermissionNames]);
+
+  const hasPermission = React.useCallback(
+    (permission: string) => userPermissions.includes(permission),
+    [userPermissions]
+  );
+
+  const canRead = hasPermission('employees_read');
+  const canCreate = hasPermission('employees_create');
+  const canUpdate = hasPermission('employees_update');
 
   React.useEffect(() => {
     const toast = searchParams.get('toast');
@@ -140,6 +222,8 @@ export default function Page(): React.JSX.Element {
       setTotalCount(json.pagination?.total ?? mapped.length);
     } catch (err) {
       console.error(err);
+      setRows([]);
+      setTotalCount(0);
       showToast(err instanceof Error ? err.message : 'Fetch failed', 'error');
     } finally {
       setLoading(false);
@@ -147,18 +231,37 @@ export default function Page(): React.JSX.Element {
   }, [apiBase, page, rowsPerPage, search, showToast]);
 
   React.useEffect(() => {
+    if (!permissionsLoaded) return;
+
+    if (!canRead) {
+      setLoading(false);
+      setRows([]);
+      setTotalCount(0);
+      return;
+    }
+
     void fetchEmployees();
-  }, [fetchEmployees]);
+  }, [fetchEmployees, permissionsLoaded, canRead]);
 
   React.useEffect(() => {
     setPage(0);
   }, [search]);
 
   const handleEditEmployee = (employee: EmployeeRow) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update employees.', 'error');
+      return;
+    }
+
     router.push(`/dashboard/employees/${employee.id}/edit`);
   };
 
   const handleToggleEmployee = async (employee: EmployeeRow, active: 0 | 1) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update employees.', 'error');
+      return;
+    }
+
     const previous = employee.active;
 
     try {
@@ -204,18 +307,42 @@ export default function Page(): React.JSX.Element {
     }
   };
 
+  if (!permissionsLoaded) {
+    return (
+      <Stack spacing={3}>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <CircularProgress size={20} />
+          <Typography>Checking permissions...</Typography>
+        </Stack>
+      </Stack>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Employees</Typography>
+        <Alert severity="error" variant="filled">
+          You do not have permission to view employees.
+        </Alert>
+      </Stack>
+    );
+  }
+
   return (
     <Stack spacing={3}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h4">Employees</Typography>
 
-        <Button
-          startIcon={<PlusIcon />}
-          variant="contained"
-          onClick={() => router.push('/dashboard/employees/new')}
-        >
-          Add Employee
-        </Button>
+        {canCreate ? (
+          <Button
+            startIcon={<PlusIcon />}
+            variant="contained"
+            onClick={() => router.push('/dashboard/employees/new')}
+          >
+            Add Employee
+          </Button>
+        ) : null}
       </Stack>
 
       <EmployeesFilters search={search} onSearchChange={setSearch} />
@@ -236,8 +363,8 @@ export default function Page(): React.JSX.Element {
             setRowsPerPage(parseInt(e.target.value, 10));
             setPage(0);
           }}
-          onToggle={handleToggleEmployee}
-          onEdit={handleEditEmployee}
+          onToggle={canUpdate ? handleToggleEmployee : undefined}
+          onEdit={canUpdate ? handleEditEmployee : undefined}
         />
       )}
 

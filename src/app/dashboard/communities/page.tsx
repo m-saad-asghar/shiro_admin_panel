@@ -28,8 +28,8 @@ type ApiCommunity = {
   selling_point: string | null;
   about: string | null;
   main_image: string | null;
-  is_area: number; // 0/1
-  active: number; // 0/1
+  is_area: number;
+  active: number;
   created_at: string;
   updated_at: string;
 };
@@ -57,6 +57,20 @@ type ApiBasicResponse = {
   errors?: Record<string, string[]>;
 };
 
+type AdminPayload = {
+  access_token?: string;
+  permissions?: Array<string | { name?: string; title?: string }>;
+  user?: {
+    permissions?: Array<string | { name?: string; title?: string }>;
+    role?: {
+      permissions?: Array<string | { name?: string; title?: string }>;
+    };
+    roles?: Array<{
+      permissions?: Array<string | { name?: string; title?: string }>;
+    }>;
+  };
+};
+
 export type CommunityRow = {
   id: string;
   name: string;
@@ -74,7 +88,6 @@ export type CommunityRow = {
 export default function Page(): React.JSX.Element {
   const router = useRouter();
 
-  // NOTE: MUI TablePagination is 0-based. API is 1-based.
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
@@ -83,11 +96,12 @@ export default function Page(): React.JSX.Element {
   const [total, setTotal] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
 
-  // Delete dialog state
+  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
+  const [userPermissions, setUserPermissions] = React.useState<string[]>([]);
+
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [selectedCommunity, setSelectedCommunity] = React.useState<CommunityRow | null>(null);
 
-  // Toast
   const [toastOpen, setToastOpen] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState('');
   const [toastSeverity, setToastSeverity] = React.useState<'success' | 'error' | 'info' | 'warning'>('success');
@@ -100,29 +114,95 @@ export default function Page(): React.JSX.Element {
     setToastOpen(true);
   };
 
-  const getAccessToken = (): string => {
+  const getAdminPayload = (): AdminPayload => {
     const payloadStr = localStorage.getItem('admin_login_payload');
     if (!payloadStr) throw new Error('admin_login_payload not found in localStorage');
 
-    let accessToken: string | null = null;
     try {
-      const payload = JSON.parse(payloadStr);
-      accessToken = payload?.access_token ? String(payload.access_token) : null;
+      return JSON.parse(payloadStr) as AdminPayload;
     } catch {
       throw new Error('admin_login_payload is not valid JSON');
     }
+  };
+
+  const getAccessToken = (): string => {
+    const payload = getAdminPayload();
+    const accessToken = payload?.access_token ? String(payload.access_token) : null;
 
     if (!accessToken) throw new Error('access_token missing inside admin_login_payload');
     return accessToken;
   };
 
+  const extractPermissionNames = React.useCallback((payload: AdminPayload): string[] => {
+    const result = new Set<string>();
+
+    const pushPermissions = (items?: Array<string | { name?: string; title?: string }>) => {
+      if (!Array.isArray(items)) return;
+
+      items.forEach((item) => {
+        if (typeof item === 'string') {
+          if (item.trim()) result.add(item.trim());
+          return;
+        }
+
+        if (item?.name && String(item.name).trim()) {
+          result.add(String(item.name).trim());
+          return;
+        }
+
+        if (item?.title && String(item.title).trim()) {
+          result.add(String(item.title).trim());
+        }
+      });
+    };
+
+    pushPermissions(payload.permissions);
+    pushPermissions(payload.user?.permissions);
+    pushPermissions(payload.user?.role?.permissions);
+
+    if (Array.isArray(payload.user?.roles)) {
+      payload.user.roles.forEach((role) => pushPermissions(role.permissions));
+    }
+
+    return Array.from(result);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const payload = getAdminPayload();
+      const permissions = extractPermissionNames(payload);
+      setUserPermissions(permissions);
+    } catch (err) {
+      console.error(err);
+      setUserPermissions([]);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, [extractPermissionNames]);
+
+  const hasPermission = React.useCallback(
+    (permission: string) => userPermissions.includes(permission),
+    [userPermissions]
+  );
+
+  const canRead = hasPermission('communities_read');
+  const canCreate = hasPermission('communities_create');
+  const canUpdate = hasPermission('communities_update');
+  const canDelete = hasPermission('communities_delete');
+
   const handleToggleStatus = async (community: CommunityRow, nextActive: boolean) => {
-    // optimistic UI update
+    if (!canUpdate) {
+      showToast('You do not have permission to update communities.', 'error');
+      return;
+    }
+
     setRows((prev) =>
       prev.map((r) => (r.id === community.id ? { ...r, active: nextActive } : r))
     );
 
     try {
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
+
       const accessToken = getAccessToken();
 
       const res = await fetch(`${apiBase}/admin/change_status_communities`, {
@@ -154,7 +234,6 @@ export default function Page(): React.JSX.Element {
     } catch (err) {
       console.error(err);
 
-      // rollback on failure
       setRows((prev) =>
         prev.map((r) => (r.id === community.id ? { ...r, active: !nextActive } : r))
       );
@@ -168,6 +247,8 @@ export default function Page(): React.JSX.Element {
     async (opts?: { page?: number; perPage?: number; search?: string }) => {
       try {
         setLoading(true);
+
+        if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
 
         const accessToken = getAccessToken();
 
@@ -212,6 +293,7 @@ export default function Page(): React.JSX.Element {
         console.error(err);
         setRows([]);
         setTotal(0);
+        showToast(err instanceof Error ? err.message : 'Failed to fetch communities', 'error');
       } finally {
         setLoading(false);
       }
@@ -220,14 +302,28 @@ export default function Page(): React.JSX.Element {
   );
 
   React.useEffect(() => {
+    if (!permissionsLoaded) return;
+
+    if (!canRead) {
+      setLoading(false);
+      setRows([]);
+      setTotal(0);
+      return;
+    }
+
     void fetchCommunities();
-  }, [fetchCommunities]);
+  }, [fetchCommunities, permissionsLoaded, canRead]);
 
   React.useEffect(() => {
     setPage(0);
   }, [search]);
 
   const handleDeleteClick = (community: CommunityRow) => {
+    if (!canDelete) {
+      showToast('You do not have permission to delete communities.', 'error');
+      return;
+    }
+
     setSelectedCommunity(community);
     setDeleteOpen(true);
   };
@@ -235,8 +331,15 @@ export default function Page(): React.JSX.Element {
   const handleDeleteConfirm = async () => {
     if (!selectedCommunity) return;
 
+    if (!canDelete) {
+      showToast('You do not have permission to delete communities.', 'error');
+      return;
+    }
+
     try {
       setLoading(true);
+
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
 
       const accessToken = getAccessToken();
 
@@ -274,13 +377,45 @@ export default function Page(): React.JSX.Element {
     }
   };
 
- const handleGoToAddPage = () => {
-  router.push('/dashboard/communities/add');
-};
+  const handleGoToAddPage = () => {
+    if (!canCreate) {
+      showToast('You do not have permission to create communities.', 'error');
+      return;
+    }
 
-const handleGoToEditPage = (community: CommunityRow) => {
-  router.push(`/dashboard/communities/edit/${community.id}`);
-};
+    router.push('/dashboard/communities/add');
+  };
+
+  const handleGoToEditPage = (community: CommunityRow) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update communities.', 'error');
+      return;
+    }
+
+    router.push(`/dashboard/communities/edit/${community.id}`);
+  };
+
+  if (!permissionsLoaded) {
+    return (
+      <Stack spacing={3}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', py: 2 }}>
+          <CircularProgress size={22} />
+          <Typography variant="body2">Checking permissions...</Typography>
+        </Stack>
+      </Stack>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Communities</Typography>
+        <Alert severity="error" variant="filled">
+          You do not have permission to view communities.
+        </Alert>
+      </Stack>
+    );
+  }
 
   return (
     <Stack spacing={3}>
@@ -289,15 +424,17 @@ const handleGoToEditPage = (community: CommunityRow) => {
           <Typography variant="h4">Communities</Typography>
         </Stack>
 
-        <div>
-          <Button
-            startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />}
-            variant="contained"
-            onClick={handleGoToAddPage}
-          >
-            Add Community
-          </Button>
-        </div>
+        {canCreate ? (
+          <div>
+            <Button
+              startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />}
+              variant="contained"
+              onClick={handleGoToAddPage}
+            >
+              Add Community
+            </Button>
+          </div>
+        ) : null}
       </Stack>
 
       <CommunitiesFilters search={search} onSearchChange={setSearch} />
@@ -318,13 +455,12 @@ const handleGoToEditPage = (community: CommunityRow) => {
             setRowsPerPage(parseInt(e.target.value, 10));
             setPage(0);
           }}
-          onEdit={(community) => handleGoToEditPage(community)}
-          onDelete={(community) => handleDeleteClick(community)}
-          onToggleStatus={(community, nextActive) => void handleToggleStatus(community, nextActive)}
+          onEdit={canUpdate ? (community) => handleGoToEditPage(community) : undefined}
+          onDelete={canDelete ? (community) => handleDeleteClick(community) : undefined}
+          onToggleStatus={canUpdate ? (community, nextActive) => void handleToggleStatus(community, nextActive) : undefined}
         />
       )}
 
-      {/* Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
         <DialogTitle>Delete Community</DialogTitle>
         <DialogContent>
@@ -340,7 +476,6 @@ const handleGoToEditPage = (community: CommunityRow) => {
         </DialogActions>
       </Dialog>
 
-      {/* Toast */}
       <Snackbar
         open={toastOpen}
         autoHideDuration={3000}

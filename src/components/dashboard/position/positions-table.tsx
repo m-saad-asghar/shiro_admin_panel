@@ -32,10 +32,8 @@ interface PositionsTableProps {
   page?: number;
   rows?: Position[];
   rowsPerPage?: number;
-
   onPageChange?: (event: unknown, newPage: number) => void;
   onRowsPerPageChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
-
   onEdit?: (position: Position) => void;
   onDelete?: (position: Position) => void;
 }
@@ -50,102 +48,82 @@ export function PositionsTable({
   onEdit,
   onDelete,
 }: PositionsTableProps): React.JSX.Element {
-
   const rowIds = React.useMemo(() => rows.map((row) => row.id), [rows]);
   const { selected } = useSelection(rowIds);
+
+  const canEdit = Boolean(onEdit);
+  const canDelete = Boolean(onDelete);
+  const showActions = canEdit || canDelete;
 
   return (
     <Card>
       <Box sx={{ overflowX: 'auto' }}>
         <Table sx={{ minWidth: 750 }}>
-
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 700 }}>
-                Name
-              </TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
 
-              <TableCell
-                align="right"
-                sx={{ width: 140, fontWeight: 700 }}
-              >
-                Actions
-              </TableCell>
+              {showActions ? (
+                <TableCell align="right" sx={{ width: 140, fontWeight: 700 }}>
+                  Actions
+                </TableCell>
+              ) : null}
             </TableRow>
           </TableHead>
 
           <TableBody>
-            {rows.map((row) => {
-
-              const isSelected = selected?.has(row.id);
-
-              return (
-                <TableRow
-                  hover
-                  key={row.id}
-                  selected={isSelected}
-                >
-
-                  <TableCell>
-                    <Typography variant="subtitle2">
-                      {row.name}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell align="right">
-
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      justifyContent="flex-end"
-                    >
-
-                      <Tooltip title="Edit">
-                        <span>
-                          <IconButton
-                            size="small"
-                            onClick={() => onEdit?.(row)}
-                            disabled={!onEdit}
-                            sx={{ color: '#9f8151' }}
-                          >
-                            <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-
-                      <Tooltip title="Delete">
-                        <span>
-                          <IconButton
-                            size="small"
-                            onClick={() => onDelete?.(row)}
-                            disabled={!onDelete}
-                            sx={{ color: '#FF0000' }}
-                          >
-                            <TrashIcon fontSize="var(--icon-fontSize-md)" />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-
-                    </Stack>
-
-                  </TableCell>
-
-                </TableRow>
-              );
-            })}
-
-            {rows.length === 0 && (
+            {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={2}>
+                <TableCell colSpan={showActions ? 2 : 1}>
                   <Typography variant="body2" color="text.secondary">
                     No Positions found.
                   </Typography>
                 </TableCell>
               </TableRow>
+            ) : (
+              rows.map((row) => {
+                const isSelected = selected?.has(row.id);
+
+                return (
+                  <TableRow hover key={row.id} selected={isSelected}>
+                    <TableCell>
+                      <Typography variant="subtitle2">{row.name}</Typography>
+                    </TableCell>
+
+                    {showActions ? (
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          {canEdit ? (
+                            <Tooltip title="Edit">
+                              <IconButton
+                                size="small"
+                                onClick={() => onEdit?.(row)}
+                                sx={{ color: '#9f8151' }}
+                              >
+                                <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
+                              </IconButton>
+                            </Tooltip>
+                          ) : null}
+
+                          {canDelete ? (
+                            <Tooltip title="Delete">
+                              <IconButton
+                                size="small"
+                                onClick={() => onDelete?.(row)}
+                                sx={{ color: '#FF0000' }}
+                              >
+                                <TrashIcon fontSize="var(--icon-fontSize-md)" />
+                              </IconButton>
+                            </Tooltip>
+                          ) : null}
+                        </Stack>
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                );
+              })
             )}
-
           </TableBody>
-
         </Table>
       </Box>
 
@@ -160,7 +138,6 @@ export function PositionsTable({
         onPageChange={onPageChange ?? (() => {})}
         onRowsPerPageChange={onRowsPerPageChange ?? (() => {})}
       />
-
     </Card>
   );
 }

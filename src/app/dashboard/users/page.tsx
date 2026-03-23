@@ -1,4 +1,3 @@
-// app/dashboard/users/page.tsx
 'use client';
 
 import * as React from 'react';
@@ -13,13 +12,17 @@ import usersImagesUrl from '@/helpers/usersImagesURL';
 import { XCircle } from '@phosphor-icons/react/dist/ssr/XCircle';
 import IconButton from '@mui/material/IconButton';
 
-// ✅ Add/Edit User Modal imports
+// Add/Edit User Modal imports
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import TextField from '@mui/material/TextField';
 import DialogContentText from '@mui/material/DialogContentText';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
 
 import { PlusIcon } from '@phosphor-icons/react/dist/ssr/Plus';
 
@@ -36,6 +39,8 @@ type ApiUser = {
   active: number;
   created_at: string;
   updated_at: string;
+  role?: string | null;
+  role_name?: string | null;
 };
 
 type ApiResponse = {
@@ -59,12 +64,61 @@ export type UserRow = {
   active: number;
   created_at: string;
   updated_at: string;
+  role: string;
+  role_name: string;
+};
+
+type TableUser = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone_number: string;
+  profile_image: string;
+  active: number;
+  created_at: string;
+  updated_at: string;
+  role?: string;
+  role_name?: string;
 };
 
 type ApiBasicResponse = {
   message?: string;
   data?: unknown;
   errors?: Record<string, string[]>;
+};
+
+type RoleOption = {
+  id: string;
+  title: string;
+  name: string;
+};
+
+type RolesApiItem = {
+  id: number | string;
+  title?: string;
+  name?: string;
+};
+
+type RolesApiResponse =
+  | {
+      success?: boolean;
+      data?: RolesApiItem[];
+    }
+  | RolesApiItem[];
+
+type AdminPayload = {
+  access_token?: string;
+  permissions?: Array<string | { name?: string; title?: string }>;
+  user?: {
+    permissions?: Array<string | { name?: string; title?: string }>;
+    role?: {
+      permissions?: Array<string | { name?: string; title?: string }>;
+    };
+    roles?: Array<{
+      permissions?: Array<string | { name?: string; title?: string }>;
+    }>;
+  };
 };
 
 // Normalize backend error keys (supports both confirm_password and password_confirmation)
@@ -75,7 +129,6 @@ function normalizeErrorKeys(errors?: Record<string, string[]>): Record<string, s
   Object.keys(errors).forEach((k) => {
     const first = errors[k]?.[0] ? String(errors[k][0]) : 'Invalid';
 
-    // Map backend "confirm_password" => "password_confirmation"
     if (k === 'confirm_password') {
       mapped.password_confirmation = first;
       return;
@@ -88,7 +141,6 @@ function normalizeErrorKeys(errors?: Record<string, string[]>): Record<string, s
 }
 
 export default function Page(): React.JSX.Element {
-  // NOTE: MUI TablePagination uses 0-based page; backend uses 1-based page.
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
   const [search, setSearch] = React.useState('');
@@ -96,26 +148,36 @@ export default function Page(): React.JSX.Element {
   const [totalCount, setTotalCount] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
 
-  // ✅ Toast
+  // permissions
+  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
+  const [userPermissions, setUserPermissions] = React.useState<string[]>([]);
+
+  // Roles
+  const [roles, setRoles] = React.useState<RoleOption[]>([]);
+  const [rolesLoading, setRolesLoading] = React.useState(false);
+  const [selectedRoleId, setSelectedRoleId] = React.useState('');
+  const [selectedRoleName, setSelectedRoleName] = React.useState('');
+
+  // Toast
   const [toastOpen, setToastOpen] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState('');
   const [toastSeverity, setToastSeverity] = React.useState<'success' | 'error' | 'info' | 'warning'>('success');
 
-  // ✅ Add dialog state
+  // Add dialog state
   const [addOpen, setAddOpen] = React.useState(false);
   const [addSubmitting, setAddSubmitting] = React.useState(false);
 
-  // ✅ Edit dialog state
+  // Edit dialog state
   const [editOpen, setEditOpen] = React.useState(false);
   const [editSubmitting, setEditSubmitting] = React.useState(false);
   const [editingUser, setEditingUser] = React.useState<UserRow | null>(null);
 
-  // 🔴 Delete dialog state
+  // Delete dialog state
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<UserRow | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = React.useState(false);
 
-  // ✅ Shared form state (used for both add + edit)
+  // Shared form state
   const [firstName, setFirstName] = React.useState('');
   const [lastName, setLastName] = React.useState('');
   const [email, setEmail] = React.useState('');
@@ -124,7 +186,6 @@ export default function Page(): React.JSX.Element {
   const [passwordConfirmation, setPasswordConfirmation] = React.useState('');
   const [profileFile, setProfileFile] = React.useState<File | null>(null);
 
-  // ✅ Preview URL for selected image
   const [profilePreviewUrl, setProfilePreviewUrl] = React.useState<string | null>(null);
 
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -138,23 +199,84 @@ export default function Page(): React.JSX.Element {
     setToastOpen(true);
   };
 
-  const getAccessToken = (): string => {
+  const getAdminPayload = (): AdminPayload => {
     const payloadStr = localStorage.getItem('admin_login_payload');
     if (!payloadStr) throw new Error('admin_login_payload not found in localStorage');
 
-    let accessToken: string | null = null;
     try {
-      const payload = JSON.parse(payloadStr);
-      accessToken = payload?.access_token ? String(payload.access_token) : null;
+      return JSON.parse(payloadStr) as AdminPayload;
     } catch {
       throw new Error('admin_login_payload is not valid JSON');
     }
+  };
+
+  const getAccessToken = (): string => {
+    const payload = getAdminPayload();
+    const accessToken = payload?.access_token ? String(payload.access_token) : null;
 
     if (!accessToken) throw new Error('access_token missing inside admin_login_payload');
     return accessToken;
   };
 
-  // ✅ Create/revoke preview URL whenever file changes
+  const extractPermissionNames = React.useCallback((payload: AdminPayload): string[] => {
+    const result = new Set<string>();
+
+    const pushPermissions = (items?: Array<string | { name?: string; title?: string }>) => {
+      if (!Array.isArray(items)) return;
+
+      items.forEach((item) => {
+        if (typeof item === 'string') {
+          if (item.trim()) result.add(item.trim());
+          return;
+        }
+
+        if (item?.name && String(item.name).trim()) {
+          result.add(String(item.name).trim());
+          return;
+        }
+
+        if (item?.title && String(item.title).trim()) {
+          result.add(String(item.title).trim());
+        }
+      });
+    };
+
+    pushPermissions(payload.permissions);
+    pushPermissions(payload.user?.permissions);
+    pushPermissions(payload.user?.role?.permissions);
+
+    if (Array.isArray(payload.user?.roles)) {
+      payload.user.roles.forEach((role) => pushPermissions(role.permissions));
+    }
+
+    return Array.from(result);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const payload = getAdminPayload();
+      const permissions = extractPermissionNames(payload);
+      setUserPermissions(permissions);
+    } catch (err) {
+      console.error(err);
+      setUserPermissions([]);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, [extractPermissionNames]);
+
+  const hasPermission = React.useCallback(
+    (permission: string) => {
+      return userPermissions.includes(permission);
+    },
+    [userPermissions]
+  );
+
+  const canRead = hasPermission('users_read');
+  const canCreate = hasPermission('users_create');
+  const canUpdate = hasPermission('users_update');
+  const canDelete = hasPermission('users_delete');
+
   React.useEffect(() => {
     if (!profileFile) {
       setProfilePreviewUrl(null);
@@ -173,40 +295,80 @@ export default function Page(): React.JSX.Element {
     setPassword('');
     setPasswordConfirmation('');
     setProfileFile(null);
+    setSelectedRoleId('');
+    setSelectedRoleName('');
     setFieldErrors({});
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const fillFormFromUser = (u: UserRow) => {
-    setFirstName(u.first_name ?? '');
-    setLastName(u.last_name ?? '');
-    setEmail(u.email ?? '');
-    setPhone(u.phone_number ?? '');
-    setPassword('');
-    setPasswordConfirmation('');
-    setProfileFile(null);
-    setFieldErrors({});
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  const normalizeTableUserToUserRow = React.useCallback(
+    (user: TableUser): UserRow => {
+      const matchedRole = roles.find(
+        (r) => r.name === (user.role_name ?? '') || r.title === (user.role ?? '')
+      );
 
-  // ✅ Add
+      return {
+        id: String(user.id),
+        first_name: user.first_name ?? '',
+        last_name: user.last_name ?? '',
+        email: user.email ?? '',
+        phone_number: user.phone_number ?? '',
+        profile_image: user.profile_image ?? '',
+        active: Number(user.active ?? 0),
+        created_at: user.created_at ?? '',
+        updated_at: user.updated_at ?? '',
+        role: user.role ?? matchedRole?.title ?? '',
+        role_name: user.role_name ?? matchedRole?.name ?? '',
+      };
+    },
+    [roles]
+  );
+
   const openAddDialog = () => {
+    if (!canCreate) {
+      showToast('You do not have permission to create users.', 'error');
+      return;
+    }
+
     resetForm();
     setAddSubmitting(false);
     setAddOpen(true);
   };
+
   const closeAddDialog = () => {
     if (addSubmitting) return;
     setAddOpen(false);
   };
 
-  // ✅ Edit
-  const openEditDialog = (user: UserRow) => {
-    setEditingUser(user);
-    fillFormFromUser(user);
+  const openEditDialog = (user: TableUser) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update users.', 'error');
+      return;
+    }
+
+    const normalizedUser = normalizeTableUserToUserRow(user);
+
+    setEditingUser(normalizedUser);
     setEditSubmitting(false);
     setEditOpen(true);
+
+    setFirstName(normalizedUser.first_name ?? '');
+    setLastName(normalizedUser.last_name ?? '');
+    setEmail(normalizedUser.email ?? '');
+    setPhone(normalizedUser.phone_number ?? '');
+    setPassword('');
+    setPasswordConfirmation('');
+    setProfileFile(null);
+    setFieldErrors({});
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    const matchedRole = roles.find(
+      (r) => r.name === (normalizedUser.role_name ?? '') || r.title === (normalizedUser.role ?? '')
+    );
+    setSelectedRoleId(matchedRole?.id ?? '');
+    setSelectedRoleName(matchedRole?.name ?? normalizedUser.role_name ?? '');
   };
+
   const closeEditDialog = () => {
     if (editSubmitting) return;
     setEditOpen(false);
@@ -214,17 +376,16 @@ export default function Page(): React.JSX.Element {
     setFieldErrors({});
   };
 
-  // ✅ Validation
   const validateAddForm = () => {
     const errors: Record<string, string> = {};
 
     if (!firstName.trim()) errors.first_name = 'First name is required';
     if (!lastName.trim()) errors.last_name = 'Second name is required';
     if (!email.trim()) errors.email = 'Email is required';
-
-    // required for add
+    if (!selectedRoleId) errors.role_id = 'Role is required';
     if (!password) errors.password = 'Password is required';
     if (!passwordConfirmation) errors.password_confirmation = 'Confirm password is required';
+
     if (password && passwordConfirmation && password !== passwordConfirmation) {
       errors.password_confirmation = 'Passwords do not match';
     }
@@ -233,7 +394,6 @@ export default function Page(): React.JSX.Element {
     return Object.keys(errors).length === 0;
   };
 
-  // ✅ For edit: password optional. If provided, must match confirm.
   const validateEditForm = () => {
     const errors: Record<string, string> = {};
 
@@ -241,8 +401,8 @@ export default function Page(): React.JSX.Element {
     if (!firstName.trim()) errors.first_name = 'First name is required';
     if (!lastName.trim()) errors.last_name = 'Second name is required';
     if (!email.trim()) errors.email = 'Email is required';
+    if (!selectedRoleId) errors.role_id = 'Role is required';
 
-    // optional: only validate if user typed anything in either field
     if (password || passwordConfirmation) {
       if (!password) errors.password = 'Password is required';
       if (!passwordConfirmation) errors.password_confirmation = 'Confirm password is required';
@@ -254,6 +414,41 @@ export default function Page(): React.JSX.Element {
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
+
+  const fetchRoles = React.useCallback(async () => {
+    try {
+      setRolesLoading(true);
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
+      const accessToken = getAccessToken();
+
+      const res = await fetch(`${apiBase}/admin/roles`, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!res.ok) throw new Error(`Fetch roles failed. HTTP ${res.status}`);
+
+      const json = (await res.json()) as RolesApiResponse;
+      const rawRoles = Array.isArray(json) ? json : (json.data ?? []);
+
+      const mappedRoles: RoleOption[] = rawRoles.map((item) => ({
+        id: String(item.id),
+        title: String(item.title ?? ''),
+        name: String(item.name ?? ''),
+      }));
+
+      setRoles(mappedRoles);
+    } catch (err) {
+      console.error(err);
+      setRoles([]);
+      showToast(err instanceof Error ? err.message : 'Failed to load roles', 'error');
+    } finally {
+      setRolesLoading(false);
+    }
+  }, [apiBase]);
 
   const fetchUsers = React.useCallback(async () => {
     try {
@@ -288,6 +483,8 @@ export default function Page(): React.JSX.Element {
         active: r.active,
         created_at: r.created_at,
         updated_at: r.updated_at,
+        role: r.role ?? '',
+        role_name: r.role_name ?? '',
       }));
 
       setRows(mapped);
@@ -303,23 +500,44 @@ export default function Page(): React.JSX.Element {
   }, [apiBase, page, rowsPerPage, search]);
 
   React.useEffect(() => {
+    if (!permissionsLoaded) return;
+    void fetchRoles();
+  }, [fetchRoles, permissionsLoaded]);
+
+  React.useEffect(() => {
+    if (!permissionsLoaded) return;
+
+    if (!canRead) {
+      setLoading(false);
+      setRows([]);
+      setTotalCount(0);
+      return;
+    }
+
     void fetchUsers();
-  }, [fetchUsers]);
+  }, [fetchUsers, permissionsLoaded, canRead]);
 
   React.useEffect(() => {
     setPage(0);
   }, [search]);
 
-  const handleToggle = async (user: UserRow) => {
-    const previous = user.active;
-    const newStatus = user.active === 1 ? 0 : 1;
+  const handleToggle = async (user: TableUser) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update users.', 'error');
+      return;
+    }
+
+    const normalizedUser = normalizeTableUserToUserRow(user);
+    const previous = normalizedUser.active;
+    const newStatus = normalizedUser.active === 1 ? 0 : 1;
 
     try {
       if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
       const accessToken = getAccessToken();
 
-      // optimistic
-      setRows((prev) => prev.map((u) => (u.id === user.id ? { ...u, active: newStatus } : u)));
+      setRows((prev) =>
+        prev.map((u) => (u.id === normalizedUser.id ? { ...u, active: newStatus } : u))
+      );
 
       const res = await fetch(`${apiBase}/admin/change_status_user`, {
         method: 'POST',
@@ -329,7 +547,7 @@ export default function Page(): React.JSX.Element {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          user_id: Number(user.id),
+          user_id: Number(normalizedUser.id),
           active: newStatus,
         }),
       });
@@ -346,17 +564,20 @@ export default function Page(): React.JSX.Element {
       showToast(payload?.message ? String(payload.message) : 'Status updated successfully', 'success');
     } catch (err) {
       console.error(err);
-      // rollback
-      setRows((prev) => prev.map((u) => (u.id === user.id ? { ...u, active: previous } : u)));
+      setRows((prev) =>
+        prev.map((u) => (u.id === normalizedUser.id ? { ...u, active: previous } : u))
+      );
       showToast(err instanceof Error ? err.message : 'Status update failed', 'error');
     }
   };
 
-  // ---------------------------
-  // 🔴 Delete handlers
-  // ---------------------------
-  const handleDeleteClick = (user: UserRow) => {
-    setSelectedUser(user);
+  const handleDeleteClick = (user: TableUser) => {
+    if (!canDelete) {
+      showToast('You do not have permission to delete users.', 'error');
+      return;
+    }
+
+    setSelectedUser(normalizeTableUserToUserRow(user));
     setDeleteOpen(true);
     setDeleteSubmitting(false);
   };
@@ -369,6 +590,11 @@ export default function Page(): React.JSX.Element {
 
   const handleDeleteConfirm = async () => {
     if (!selectedUser || deleteSubmitting) return;
+
+    if (!canDelete) {
+      showToast('You do not have permission to delete users.', 'error');
+      return;
+    }
 
     try {
       setDeleteSubmitting(true);
@@ -410,10 +636,12 @@ export default function Page(): React.JSX.Element {
     }
   };
 
-  // ---------------------------
-  // ✅ Add user submit
-  // ---------------------------
   const handleAddUserConfirm = async () => {
+    if (!canCreate) {
+      showToast('You do not have permission to create users.', 'error');
+      return;
+    }
+
     if (addSubmitting) return;
 
     const ok = validateAddForm();
@@ -435,6 +663,9 @@ export default function Page(): React.JSX.Element {
 
       fd.append('password', password);
       fd.append('password_confirmation', passwordConfirmation);
+
+      fd.append('role_id', selectedRoleId);
+      fd.append('role_name', selectedRoleName);
 
       if (profileFile) fd.append('profile_image', profileFile);
 
@@ -476,10 +707,12 @@ export default function Page(): React.JSX.Element {
     }
   };
 
-  // ---------------------------
-  // ✅ Edit user submit
-  // ---------------------------
   const handleEditUserConfirm = async () => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update users.', 'error');
+      return;
+    }
+
     if (editSubmitting) return;
 
     const ok = validateEditForm();
@@ -505,7 +738,9 @@ export default function Page(): React.JSX.Element {
       fd.append('email', email.trim());
       fd.append('phone_number', phone.trim());
 
-      // password optional in edit: only send if user typed password
+      fd.append('role_id', selectedRoleId);
+      fd.append('role_name', selectedRoleName);
+
       if (password) {
         fd.append('password', password);
         fd.append('password_confirmation', passwordConfirmation);
@@ -559,11 +794,40 @@ export default function Page(): React.JSX.Element {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handleRoleChange = (roleId: string) => {
+    setSelectedRoleId(roleId);
+    const foundRole = roles.find((r) => r.id === roleId);
+    setSelectedRoleName(foundRole?.name ?? '');
+    setFieldErrors((prev) => ({ ...prev, role_id: '' }));
+  };
+
   const currentPreviewSrc = React.useMemo(() => {
     if (profilePreviewUrl) return profilePreviewUrl;
     if (editOpen && editingUser?.profile_image) return usersImagesUrl(editingUser.profile_image);
     return usersImagesUrl('default_user.avif');
   }, [profilePreviewUrl, editOpen, editingUser]);
+
+  if (!permissionsLoaded) {
+    return (
+      <Stack spacing={3}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', py: 2 }}>
+          <CircularProgress size={22} />
+          <Typography variant="body2">Checking permissions...</Typography>
+        </Stack>
+      </Stack>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Users</Typography>
+        <Alert severity="error" variant="filled">
+          You do not have permission to view users.
+        </Alert>
+      </Stack>
+    );
+  }
 
   return (
     <Stack spacing={3}>
@@ -572,11 +836,13 @@ export default function Page(): React.JSX.Element {
           <Typography variant="h4">Users</Typography>
         </Stack>
 
-        <div>
-          <Button startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />} variant="contained" onClick={openAddDialog}>
-            Add User
-          </Button>
-        </div>
+        {canCreate ? (
+          <div>
+            <Button startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />} variant="contained" onClick={openAddDialog}>
+              Add User
+            </Button>
+          </div>
+        ) : null}
       </Stack>
 
       <UsersFilters search={search} onSearchChange={setSearch} />
@@ -597,13 +863,12 @@ export default function Page(): React.JSX.Element {
             setRowsPerPage(parseInt(e.target.value, 10));
             setPage(0);
           }}
-          onEdit={(user) => openEditDialog(user)}
-          onDelete={(user) => handleDeleteClick(user)}
-          onToggle={handleToggle}
+          onEdit={canUpdate ? (user) => openEditDialog(user) : undefined}
+          onDelete={canDelete ? (user) => handleDeleteClick(user) : undefined}
+          onToggle={canUpdate ? handleToggle : undefined}
         />
       )}
 
-      {/* ✅ Add User Dialog */}
       <Dialog open={addOpen} onClose={closeAddDialog} fullWidth maxWidth="sm">
         <DialogTitle>Add User</DialogTitle>
 
@@ -653,7 +918,27 @@ export default function Page(): React.JSX.Element {
               helperText={fieldErrors.phone_number || ''}
             />
 
-            {/* Profile Picture (OPTIONAL) */}
+            <FormControl fullWidth error={Boolean(fieldErrors.role_id)} disabled={addSubmitting || rolesLoading}>
+              <InputLabel id="add-role-label">Role</InputLabel>
+              <Select
+                labelId="add-role-label"
+                value={selectedRoleId}
+                label="Role"
+                onChange={(e) => handleRoleChange(String(e.target.value))}
+              >
+                {roles.map((role) => (
+                  <MenuItem key={role.id} value={role.id}>
+                    {role.title}
+                  </MenuItem>
+                ))}
+              </Select>
+              {fieldErrors.role_id ? (
+                <Typography variant="caption" color="error" sx={{ mt: 0.75, ml: 1.75 }}>
+                  {fieldErrors.role_id}
+                </Typography>
+              ) : null}
+            </FormControl>
+
             <Stack spacing={1}>
               <Typography variant="subtitle2" sx={{ fontSize: 16, color: '#667085' }}>
                 Profile Picture
@@ -764,7 +1049,6 @@ export default function Page(): React.JSX.Element {
         </DialogActions>
       </Dialog>
 
-      {/* ✅ Edit User Dialog */}
       <Dialog open={editOpen} onClose={closeEditDialog} fullWidth maxWidth="sm">
         <DialogTitle>Edit User</DialogTitle>
 
@@ -814,7 +1098,27 @@ export default function Page(): React.JSX.Element {
               helperText={fieldErrors.phone_number || ''}
             />
 
-            {/* Profile Picture (OPTIONAL) */}
+            <FormControl fullWidth error={Boolean(fieldErrors.role_id)} disabled={editSubmitting || rolesLoading}>
+              <InputLabel id="edit-role-label">Role</InputLabel>
+              <Select
+                labelId="edit-role-label"
+                value={selectedRoleId}
+                label="Role"
+                onChange={(e) => handleRoleChange(String(e.target.value))}
+              >
+                {roles.map((role) => (
+                  <MenuItem key={role.id} value={role.id}>
+                    {role.title}
+                  </MenuItem>
+                ))}
+              </Select>
+              {fieldErrors.role_id ? (
+                <Typography variant="caption" color="error" sx={{ mt: 0.75, ml: 1.75 }}>
+                  {fieldErrors.role_id}
+                </Typography>
+              ) : null}
+            </FormControl>
+
             <Stack spacing={1}>
               <Typography variant="subtitle2" sx={{ fontSize: 16, color: '#667085' }}>
                 Profile Picture
@@ -877,7 +1181,6 @@ export default function Page(): React.JSX.Element {
               </Stack>
             </Stack>
 
-            {/* Password optional on edit */}
             <TextField
               label="Password"
               type="password"
@@ -924,7 +1227,6 @@ export default function Page(): React.JSX.Element {
         </DialogActions>
       </Dialog>
 
-      {/* 🔴 Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onClose={handleDeleteClose}>
         <DialogTitle>Delete User</DialogTitle>
         <DialogContent>

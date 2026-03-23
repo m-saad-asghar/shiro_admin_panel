@@ -3,7 +3,6 @@
 import * as React from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
-import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Link from '@mui/material/Link';
@@ -47,8 +46,6 @@ interface EmployeesTableProps {
   onToggle?: (employee: Employee, active: 0 | 1) => void;
 }
 
-const IMAGE_BASE_URL = process.env.NEXT_PUBLIC_IMAGE_BASE_URL?.replace(/\/$/, '') || '';
-
 function formatDate(value: string | null | undefined): string {
   if (!value) return '-';
   const d = new Date(value);
@@ -58,14 +55,6 @@ function formatDate(value: string | null | undefined): string {
     month: 'short',
     year: 'numeric',
   });
-}
-
-function buildImageUrl(path?: string | null): string {
-  if (path && path.trim() !== '') {
-    if (path.startsWith('http://') || path.startsWith('https://')) return path;
-    return `${IMAGE_BASE_URL}/${path.replace(/^\/+/, '')}`;
-  }
-  return `${IMAGE_BASE_URL}/default_user.avif`;
 }
 
 function formatPhone(value: string | null | undefined): string {
@@ -90,6 +79,11 @@ export function EmployeesTable({
   onEdit,
   onToggle,
 }: EmployeesTableProps): React.JSX.Element {
+  const canEdit = Boolean(onEdit);
+  const canToggle = Boolean(onToggle);
+
+  const totalColumns = 7 + (canToggle ? 1 : 0) + (canEdit ? 1 : 0);
+
   return (
     <Card>
       <Box sx={{ overflowX: 'auto' }}>
@@ -103,137 +97,135 @@ export function EmployeesTable({
               <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>WhatsApp</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-              <TableCell align="right" sx={{ width: 120, fontWeight: 700 }}>
-                Actions
-              </TableCell>
+
+              {canToggle ? <TableCell sx={{ fontWeight: 700 }}>Status</TableCell> : null}
+
+              {canEdit ? (
+                <TableCell align="right" sx={{ width: 120, fontWeight: 700 }}>
+                  Actions
+                </TableCell>
+              ) : null}
             </TableRow>
           </TableHead>
 
           <TableBody>
-            {rows.map((row) => {
-              const isOn = Number(row.active) === 1;
-              const whatsappLink = buildWhatsAppLink(row.whatsapp);
-
-              return (
-                <TableRow hover key={row.id}>
-                  <TableCell>
-                    <Image
-                     src={employeesImagesUrl(row.profile_picture ?? undefined)}
-                      alt={row.name}
-                      width={56}
-                      height={56}
-                      style={{
-                        borderRadius: '50%',
-                        objectFit: 'cover',
-                        width: 56,
-                        height: 56,
-                      }}
-                    />
-                  </TableCell>
-
-                  <TableCell>
-                    <Stack spacing={0.5}>
-                      <Typography variant="subtitle2">{row.name || '-'}</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {row.email || '-'}
-                      </Typography>
-                    </Stack>
-                  </TableCell>
-
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {row.department || '-'}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {row.position || '-'}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {formatPhone(row.phone)}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell>
-                    {whatsappLink ? (
-                      <Link
-                        href={whatsappLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        underline="hover"
-                      >
-                        {row.whatsapp}
-                      </Link>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        -
-                      </Typography>
-                    )}
-                  </TableCell>
-
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {formatDate(row.created_at)}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell>
-                    {/* <Chip
-                      label={isOn ? 'Active' : 'Inactive'}
-                      size="small"
-                      sx={{
-                        fontWeight: 600,
-                        backgroundColor: isOn ? '#e6f4ea' : '#fdecea',
-                        color: isOn ? '#1e4620' : '#b42318',
-                        mb: 1,
-                      }}
-                    /> */}
-                    <Box>
-                      <Switch
-                        checked={isOn}
-                        onChange={(e) => onToggle?.(row, e.target.checked ? 1 : 0)}
-                        sx={{
-                          '& .MuiSwitch-switchBase.Mui-checked': {
-                            color: '#0b4a35',
-                          },
-                          '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                            backgroundColor: '#0b4a35',
-                          },
-                        }}
-                      />
-                    </Box>
-                  </TableCell>
-
-                  <TableCell align="right">
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      <Tooltip title="Edit">
-                        <IconButton
-                          size="small"
-                          onClick={() => onEdit?.(row)}
-                          sx={{ color: '#9f8151' }}
-                        >
-                          <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-
-            {rows.length === 0 && (
+            {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9}>
+                <TableCell colSpan={totalColumns}>
                   <Typography variant="body2" color="text.secondary">
                     No employees found.
                   </Typography>
                 </TableCell>
               </TableRow>
+            ) : (
+              rows.map((row) => {
+                const isOn = Number(row.active) === 1;
+                const whatsappLink = buildWhatsAppLink(row.whatsapp);
+
+                return (
+                  <TableRow hover key={row.id}>
+                    <TableCell>
+                      <Image
+                        src={employeesImagesUrl(row.profile_picture ?? undefined)}
+                        alt={row.name}
+                        width={56}
+                        height={56}
+                        style={{
+                          borderRadius: '50%',
+                          objectFit: 'cover',
+                          width: 56,
+                          height: 56,
+                        }}
+                      />
+                    </TableCell>
+
+                    <TableCell>
+                      <Stack spacing={0.5}>
+                        <Typography variant="subtitle2">{row.name || '-'}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {row.email || '-'}
+                        </Typography>
+                      </Stack>
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {row.department || '-'}
+                      </Typography>
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {row.position || '-'}
+                      </Typography>
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatPhone(row.phone)}
+                      </Typography>
+                    </TableCell>
+
+                    <TableCell>
+                      {whatsappLink ? (
+                        <Link
+                          href={whatsappLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          underline="hover"
+                        >
+                          {row.whatsapp}
+                        </Link>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          -
+                        </Typography>
+                      )}
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatDate(row.created_at)}
+                      </Typography>
+                    </TableCell>
+
+                    {canToggle ? (
+                      <TableCell>
+                        <Box>
+                          <Switch
+                            checked={isOn}
+                            onChange={(e) => onToggle?.(row, e.target.checked ? 1 : 0)}
+                            sx={{
+                              '& .MuiSwitch-switchBase.Mui-checked': {
+                                color: '#0b4a35',
+                              },
+                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                                backgroundColor: '#0b4a35',
+                              },
+                            }}
+                          />
+                        </Box>
+                      </TableCell>
+                    ) : null}
+
+                    {canEdit ? (
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Tooltip title="Edit">
+                            <IconButton
+                              size="small"
+                              onClick={() => onEdit?.(row)}
+                              sx={{ color: '#9f8151' }}
+                            >
+                              <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

@@ -22,7 +22,7 @@ import { AmenitiesTable } from '@/components/dashboard/amenity/amenities-table';
 type ApiAmenity = {
   id: number;
   name: string;
-  active: number; // 0/1
+  active: number;
   created_at: string;
   updated_at: string;
 };
@@ -50,6 +50,20 @@ type ApiBasicResponse = {
   errors?: Record<string, string[]>;
 };
 
+type AdminPayload = {
+  access_token?: string;
+  permissions?: Array<string | { name?: string; title?: string }>;
+  user?: {
+    permissions?: Array<string | { name?: string; title?: string }>;
+    role?: {
+      permissions?: Array<string | { name?: string; title?: string }>;
+    };
+    roles?: Array<{
+      permissions?: Array<string | { name?: string; title?: string }>;
+    }>;
+  };
+};
+
 export type AmenityRow = {
   id: string;
   name: string;
@@ -59,7 +73,6 @@ export type AmenityRow = {
 };
 
 export default function Page(): React.JSX.Element {
-  // NOTE: MUI TablePagination is 0-based. API is 1-based.
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
@@ -68,22 +81,21 @@ export default function Page(): React.JSX.Element {
   const [total, setTotal] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
 
-  // 🔴 Delete dialog state
+  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
+  const [userPermissions, setUserPermissions] = React.useState<string[]>([]);
+
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [selectedAmenity, setSelectedAmenity] = React.useState<AmenityRow | null>(null);
 
-  // ✅ Add Amenity dialog state
   const [addOpen, setAddOpen] = React.useState(false);
   const [newAmenityName, setNewAmenityName] = React.useState('');
   const [addSubmitting, setAddSubmitting] = React.useState(false);
 
-  // ✅ Edit Amenity dialog state
   const [editOpen, setEditOpen] = React.useState(false);
   const [editAmenityId, setEditAmenityId] = React.useState<string | null>(null);
   const [editAmenityName, setEditAmenityName] = React.useState('');
   const [editSubmitting, setEditSubmitting] = React.useState(false);
 
-  // ✅ Toast
   const [toastOpen, setToastOpen] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState('');
   const [toastSeverity, setToastSeverity] = React.useState<'success' | 'error' | 'info' | 'warning'>('success');
@@ -96,68 +108,132 @@ export default function Page(): React.JSX.Element {
     setToastOpen(true);
   };
 
-   const handleToggleStatus = async (amenity: AmenityRow, nextActive: boolean) => {
-  // 1) optimistic UI update
-  setRows((prev) =>
-    prev.map((r) => (r.id === amenity.id ? { ...r, active: nextActive } : r))
-  );
-
-  try {
-    const accessToken = getAccessToken();
-
-    const res = await fetch(`${apiBase}/admin/change_status_amenity`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        amenity_id: Number(amenity.id),
-        active: nextActive ? 1 : 0,
-      }),
-    });
-
-    let payload: ApiBasicResponse | null = null;
-    try {
-      payload = (await res.json()) as ApiBasicResponse;
-    } catch {
-      payload = null;
-    }
-
-    if (!res.ok) {
-      const msgFromServer = payload?.message ? String(payload.message) : null;
-      throw new Error(msgFromServer || `Status update failed. HTTP ${res.status}`);
-    }
-
-    showToast(payload?.message ? String(payload.message) : 'Amenity status updated.', 'success');
-  } catch (err) {
-    console.error(err);
-
-    // 2) rollback on failure
-    setRows((prev) =>
-      prev.map((r) => (r.id === amenity.id ? { ...r, active: !nextActive } : r))
-    );
-
-    const msg = err instanceof Error ? err.message : 'Status update failed';
-    showToast(msg, 'error');
-  }
-};
-
-  const getAccessToken = (): string => {
+  const getAdminPayload = (): AdminPayload => {
     const payloadStr = localStorage.getItem('admin_login_payload');
     if (!payloadStr) throw new Error('admin_login_payload not found in localStorage');
 
-    let accessToken: string | null = null;
     try {
-      const payload = JSON.parse(payloadStr);
-      accessToken = payload?.access_token ? String(payload.access_token) : null;
+      return JSON.parse(payloadStr) as AdminPayload;
     } catch {
       throw new Error('admin_login_payload is not valid JSON');
     }
+  };
 
+  const getAccessToken = (): string => {
+    const payload = getAdminPayload();
+    const accessToken = payload?.access_token ? String(payload.access_token) : null;
     if (!accessToken) throw new Error('access_token missing inside admin_login_payload');
     return accessToken;
+  };
+
+  const extractPermissionNames = React.useCallback((payload: AdminPayload): string[] => {
+    const result = new Set<string>();
+
+    const pushPermissions = (items?: Array<string | { name?: string; title?: string }>) => {
+      if (!Array.isArray(items)) return;
+
+      items.forEach((item) => {
+        if (typeof item === 'string') {
+          if (item.trim()) result.add(item.trim());
+          return;
+        }
+
+        if (item?.name && String(item.name).trim()) {
+          result.add(String(item.name).trim());
+          return;
+        }
+
+        if (item?.title && String(item.title).trim()) {
+          result.add(String(item.title).trim());
+        }
+      });
+    };
+
+    pushPermissions(payload.permissions);
+    pushPermissions(payload.user?.permissions);
+    pushPermissions(payload.user?.role?.permissions);
+
+    if (Array.isArray(payload.user?.roles)) {
+      payload.user.roles.forEach((role) => pushPermissions(role.permissions));
+    }
+
+    return Array.from(result);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const payload = getAdminPayload();
+      const permissions = extractPermissionNames(payload);
+      setUserPermissions(permissions);
+    } catch (err) {
+      console.error(err);
+      setUserPermissions([]);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, [extractPermissionNames]);
+
+  const hasPermission = React.useCallback(
+    (permission: string) => userPermissions.includes(permission),
+    [userPermissions]
+  );
+
+  const canRead = hasPermission('amenities_read');
+  const canCreate = hasPermission('amenities_create');
+  const canUpdate = hasPermission('amenities_update');
+  const canDelete = hasPermission('amenities_delete');
+
+  const handleToggleStatus = async (amenity: AmenityRow, nextActive: boolean) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update amenities.', 'error');
+      return;
+    }
+
+    setRows((prev) =>
+      prev.map((r) => (r.id === amenity.id ? { ...r, active: nextActive } : r))
+    );
+
+    try {
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
+
+      const accessToken = getAccessToken();
+
+      const res = await fetch(`${apiBase}/admin/change_status_amenity`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          amenity_id: Number(amenity.id),
+          active: nextActive ? 1 : 0,
+        }),
+      });
+
+      let payload: ApiBasicResponse | null = null;
+      try {
+        payload = (await res.json()) as ApiBasicResponse;
+      } catch {
+        payload = null;
+      }
+
+      if (!res.ok) {
+        const msgFromServer = payload?.message ? String(payload.message) : null;
+        throw new Error(msgFromServer || `Status update failed. HTTP ${res.status}`);
+      }
+
+      showToast(payload?.message ? String(payload.message) : 'Amenity status updated.', 'success');
+    } catch (err) {
+      console.error(err);
+
+      setRows((prev) =>
+        prev.map((r) => (r.id === amenity.id ? { ...r, active: !nextActive } : r))
+      );
+
+      const msg = err instanceof Error ? err.message : 'Status update failed';
+      showToast(msg, 'error');
+    }
   };
 
   const fetchAmenities = React.useCallback(
@@ -165,9 +241,11 @@ export default function Page(): React.JSX.Element {
       try {
         setLoading(true);
 
+        if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
+
         const accessToken = getAccessToken();
 
-        const apiPage = (opts?.page ?? page) + 1; // convert 0-based -> 1-based
+        const apiPage = (opts?.page ?? page) + 1;
         const perPage = opts?.perPage ?? rowsPerPage;
         const q = (opts?.search ?? search).trim();
 
@@ -202,6 +280,7 @@ export default function Page(): React.JSX.Element {
         console.error(err);
         setRows([]);
         setTotal(0);
+        showToast(err instanceof Error ? err.message : 'Failed to fetch amenities', 'error');
       } finally {
         setLoading(false);
       }
@@ -209,20 +288,29 @@ export default function Page(): React.JSX.Element {
     [apiBase, page, rowsPerPage, search]
   );
 
-  // Initial + whenever page/perPage/search changes
   React.useEffect(() => {
-    void fetchAmenities();
-  }, [fetchAmenities]);
+    if (!permissionsLoaded) return;
 
-  // Reset page when search changes
+    if (!canRead) {
+      setLoading(false);
+      setRows([]);
+      setTotal(0);
+      return;
+    }
+
+    void fetchAmenities();
+  }, [fetchAmenities, permissionsLoaded, canRead]);
+
   React.useEffect(() => {
     setPage(0);
   }, [search]);
 
-  // ---------------------------
-  // Delete handlers
-  // ---------------------------
   const handleDeleteClick = (amenity: AmenityRow) => {
+    if (!canDelete) {
+      showToast('You do not have permission to delete amenities.', 'error');
+      return;
+    }
+
     setSelectedAmenity(amenity);
     setDeleteOpen(true);
   };
@@ -230,12 +318,18 @@ export default function Page(): React.JSX.Element {
   const handleDeleteConfirm = async () => {
     if (!selectedAmenity) return;
 
+    if (!canDelete) {
+      showToast('You do not have permission to delete amenities.', 'error');
+      return;
+    }
+
     try {
       setLoading(true);
 
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
+
       const accessToken = getAccessToken();
 
-      // ✅ change this endpoint if your backend differs
       const res = await fetch(`${apiBase}/admin/amenities/${Number(selectedAmenity.id)}`, {
         method: 'DELETE',
         headers: {
@@ -259,7 +353,6 @@ export default function Page(): React.JSX.Element {
       setDeleteOpen(false);
       setSelectedAmenity(null);
 
-      // keep current page
       await fetchAmenities({ page, perPage: rowsPerPage, search });
       showToast(payload?.message ? String(payload.message) : 'Amenity deleted successfully.', 'success');
     } catch (err) {
@@ -271,10 +364,12 @@ export default function Page(): React.JSX.Element {
     }
   };
 
-  // ---------------------------
-  // Add Amenity handlers
-  // ---------------------------
   const openAddDialog = () => {
+    if (!canCreate) {
+      showToast('You do not have permission to create amenities.', 'error');
+      return;
+    }
+
     setAddOpen(true);
     setNewAmenityName('');
     setAddSubmitting(false);
@@ -286,15 +381,21 @@ export default function Page(): React.JSX.Element {
   };
 
   const handleAddConfirm = async () => {
+    if (!canCreate) {
+      showToast('You do not have permission to create amenities.', 'error');
+      return;
+    }
+
     const cleanName = newAmenityName.trim();
     if (!cleanName || addSubmitting) return;
 
     try {
       setAddSubmitting(true);
 
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
+
       const accessToken = getAccessToken();
 
-      // ✅ change this endpoint if your backend differs
       const res = await fetch(`${apiBase}/admin/add-amenity`, {
         method: 'POST',
         headers: {
@@ -331,7 +432,6 @@ export default function Page(): React.JSX.Element {
       setAddOpen(false);
       setNewAmenityName('');
 
-      // reload first page so new item appears
       setPage(0);
       await fetchAmenities({ page: 0, perPage: rowsPerPage, search });
       showToast(payload?.message ? String(payload.message) : 'Amenity created successfully.', 'success');
@@ -344,10 +444,12 @@ export default function Page(): React.JSX.Element {
     }
   };
 
-  // ---------------------------
-  // Edit Amenity handlers
-  // ---------------------------
   const openEditDialog = (amenity: AmenityRow) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update amenities.', 'error');
+      return;
+    }
+
     setEditOpen(true);
     setEditAmenityId(amenity.id);
     setEditAmenityName(amenity.name);
@@ -362,15 +464,21 @@ export default function Page(): React.JSX.Element {
   };
 
   const handleEditConfirm = async () => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update amenities.', 'error');
+      return;
+    }
+
     const cleanName = editAmenityName.trim();
     if (!editAmenityId || !cleanName || editSubmitting) return;
 
     try {
       setEditSubmitting(true);
 
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
+
       const accessToken = getAccessToken();
 
-      // ✅ change this endpoint if your backend differs
       const res = await fetch(`${apiBase}/admin/amenities/${Number(editAmenityId)}`, {
         method: 'PUT',
         headers: {
@@ -401,8 +509,6 @@ export default function Page(): React.JSX.Element {
       }
 
       closeEditDialog();
-
-      // keep current page
       await fetchAmenities({ page, perPage: rowsPerPage, search });
       showToast(payload?.message ? String(payload.message) : 'Amenity updated successfully.', 'success');
     } catch (err) {
@@ -414,6 +520,28 @@ export default function Page(): React.JSX.Element {
     }
   };
 
+  if (!permissionsLoaded) {
+    return (
+      <Stack spacing={3}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', py: 2 }}>
+          <CircularProgress size={22} />
+          <Typography variant="body2">Checking permissions...</Typography>
+        </Stack>
+      </Stack>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Amenities</Typography>
+        <Alert severity="error" variant="filled">
+          You do not have permission to view amenities.
+        </Alert>
+      </Stack>
+    );
+  }
+
   return (
     <Stack spacing={3}>
       <Stack direction="row" spacing={3}>
@@ -421,11 +549,17 @@ export default function Page(): React.JSX.Element {
           <Typography variant="h4">Amenities</Typography>
         </Stack>
 
-        <div>
-          <Button startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />} variant="contained" onClick={openAddDialog}>
-            Add Amenity
-          </Button>
-        </div>
+        {canCreate ? (
+          <div>
+            <Button
+              startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />}
+              variant="contained"
+              onClick={openAddDialog}
+            >
+              Add Amenity
+            </Button>
+          </div>
+        ) : null}
       </Stack>
 
       <AmenitiesFilters search={search} onSearchChange={setSearch} />
@@ -436,23 +570,22 @@ export default function Page(): React.JSX.Element {
           <Typography variant="body2">Loading Amenities...</Typography>
         </Stack>
       ) : (
-               <AmenitiesTable
-  count={total}
-  page={page}
-  rows={rows}
-  rowsPerPage={rowsPerPage}
-  onPageChange={(_, newPage) => setPage(newPage)}
-  onRowsPerPageChange={(e) => {
-    setRowsPerPage(parseInt(e.target.value, 10));
-    setPage(0);
-  }}
-  onEdit={(amenity) => openEditDialog(amenity)}
-  onDelete={(amenity) => handleDeleteClick(amenity)}
-  onToggleStatus={(amenity, nextActive) => void handleToggleStatus(amenity, nextActive)}
-/>
+        <AmenitiesTable
+          count={total}
+          page={page}
+          rows={rows}
+          rowsPerPage={rowsPerPage}
+          onPageChange={(_, newPage) => setPage(newPage)}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(parseInt(e.target.value, 10));
+            setPage(0);
+          }}
+          onEdit={canUpdate ? (amenity) => openEditDialog(amenity) : undefined}
+          onDelete={canDelete ? (amenity) => handleDeleteClick(amenity) : undefined}
+          onToggleStatus={canUpdate ? (amenity, nextActive) => void handleToggleStatus(amenity, nextActive) : undefined}
+        />
       )}
 
-      {/* ✅ Add Amenity Dialog */}
       <Dialog open={addOpen} onClose={closeAddDialog} fullWidth maxWidth="sm">
         <DialogTitle>Add Amenity</DialogTitle>
         <DialogContent>
@@ -488,7 +621,6 @@ export default function Page(): React.JSX.Element {
         </DialogActions>
       </Dialog>
 
-      {/* ✅ Edit Amenity Dialog */}
       <Dialog open={editOpen} onClose={closeEditDialog} fullWidth maxWidth="sm">
         <DialogTitle>Edit Amenity</DialogTitle>
         <DialogContent>
@@ -524,7 +656,6 @@ export default function Page(): React.JSX.Element {
         </DialogActions>
       </Dialog>
 
-      {/* 🔴 Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
         <DialogTitle>Delete Amenity</DialogTitle>
         <DialogContent>
@@ -538,7 +669,6 @@ export default function Page(): React.JSX.Element {
         </DialogActions>
       </Dialog>
 
-      {/* ✅ Toast */}
       <Snackbar
         open={toastOpen}
         autoHideDuration={3000}

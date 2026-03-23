@@ -27,7 +27,7 @@ export interface Project {
   starting_price: string | null;
   handover: string | null;
   payment_plan: string | null;
-  active: number; // 1 = active, 0 = inactive
+  active: number;
   created_at: string | null;
 }
 
@@ -36,12 +36,9 @@ interface ProjectsTableProps {
   page?: number;
   rows?: Project[];
   rowsPerPage?: number;
-
   onPageChange?: (event: unknown, newPage: number) => void;
   onRowsPerPageChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
-
   onEdit?: (project: Project) => void;
-
   onToggle?: (project: Project, active: 0 | 1) => void;
 }
 
@@ -51,7 +48,11 @@ function formatDate(value: string | null | undefined): string {
   if (!value) return '-';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '-';
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 function buildImageUrl(path?: string | null): string {
@@ -59,7 +60,6 @@ function buildImageUrl(path?: string | null): string {
     if (path.startsWith('https')) return path;
     return `${IMAGE_BASE_URL}/${path}`;
   }
-  // use any default project image you actually have
   return `${IMAGE_BASE_URL}/default_project.avif`;
 }
 
@@ -73,6 +73,11 @@ export function ProjectsTable({
   onEdit,
   onToggle,
 }: ProjectsTableProps): React.JSX.Element {
+  const canEdit = Boolean(onEdit);
+  const canToggle = Boolean(onToggle);
+
+  const totalColumns = 7 + (canToggle ? 1 : 0) + (canEdit ? 1 : 0);
+
   return (
     <Card>
       <Box sx={{ overflowX: 'auto' }}>
@@ -86,95 +91,111 @@ export function ProjectsTable({
               <TableCell sx={{ fontWeight: 700 }}>Handover</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Payment Plan</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-              <TableCell align="right" sx={{ width: 120, fontWeight: 700 }}>
-                Actions
-              </TableCell>
+
+              {canToggle ? (
+                <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              ) : null}
+
+              {canEdit ? (
+                <TableCell align="right" sx={{ width: 120, fontWeight: 700 }}>
+                  Actions
+                </TableCell>
+              ) : null}
             </TableRow>
           </TableHead>
 
           <TableBody>
-            {rows.map((row) => {
-              const isOn = Number(row.active) === 1;
-
-              return (
-                <TableRow hover key={row.id}>
-                  <TableCell>
-                    <Typography variant="subtitle2">{row.name}</Typography>
-                  </TableCell>
-
-                  <TableCell>
-                    <Image
-                      src={buildImageUrl(row.main_image)}
-                      alt={`${row.name} main image`}
-                      width={200}
-                      height={140}
-                      style={{ borderRadius: 10, objectFit: 'cover' }}
-                    />
-                  </TableCell>
-
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {row.community_name || '-'}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {row.starting_price || '-'}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {row.handover || '-'}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {row.payment_plan || '-'}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {formatDate(row.created_at)}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell>
-                    <Switch
-                      checked={isOn}
-                      onChange={(e) => onToggle?.(row, e.target.checked ? 1 : 0)}
-                      sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': { color: '#0b4a35' },
-                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: '#0b4a35' },
-                      }}
-                    />
-                  </TableCell>
-
-                  <TableCell align="right">
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      <Tooltip title="Edit">
-                        <IconButton size="small" onClick={() => onEdit?.(row)} style={{ color: '#9f8151' }}>
-                          <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-
-            {rows.length === 0 && (
+            {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9}>
+                <TableCell colSpan={totalColumns}>
                   <Typography variant="body2" color="text.secondary">
                     No projects found.
                   </Typography>
                 </TableCell>
               </TableRow>
+            ) : (
+              rows.map((row) => {
+                const isOn = Number(row.active) === 1;
+
+                return (
+                  <TableRow hover key={row.id}>
+                    <TableCell>
+                      <Typography variant="subtitle2">{row.name}</Typography>
+                    </TableCell>
+
+                    <TableCell>
+                      <Image
+                        src={buildImageUrl(row.main_image)}
+                        alt={`${row.name} main image`}
+                        width={200}
+                        height={140}
+                        style={{ borderRadius: 10, objectFit: 'cover' }}
+                      />
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {row.community_name || '-'}
+                      </Typography>
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {row.starting_price || '-'}
+                      </Typography>
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {row.handover || '-'}
+                      </Typography>
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {row.payment_plan || '-'}
+                      </Typography>
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatDate(row.created_at)}
+                      </Typography>
+                    </TableCell>
+
+                    {canToggle ? (
+                      <TableCell>
+                        <Switch
+                          checked={isOn}
+                          onChange={(e) => onToggle?.(row, e.target.checked ? 1 : 0)}
+                          sx={{
+                            '& .MuiSwitch-switchBase.Mui-checked': { color: '#0b4a35' },
+                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                              backgroundColor: '#0b4a35',
+                            },
+                          }}
+                        />
+                      </TableCell>
+                    ) : null}
+
+                    {canEdit ? (
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Tooltip title="Edit">
+                            <IconButton
+                              size="small"
+                              onClick={() => onEdit?.(row)}
+                              sx={{ color: '#9f8151' }}
+                            >
+                              <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

@@ -18,9 +18,9 @@ import { ProjectsTable } from '@/components/dashboard/projects/projects-table';
 type ApiProject = {
   id: number;
   name: string;
-  main_image: string | null;       // filename only
+  main_image: string | null;
   community_name: string | null;
-  starting_price: string | null;   // varchar in DB, keep string
+  starting_price: string | null;
   handover: string | null;
   payment_plan: string | null;
   active: number;
@@ -55,6 +55,20 @@ type ApiBasicResponse = {
   errors?: Record<string, string[]>;
 };
 
+type AdminPayload = {
+  access_token?: string;
+  permissions?: Array<string | { name?: string; title?: string }>;
+  user?: {
+    permissions?: Array<string | { name?: string; title?: string }>;
+    role?: {
+      permissions?: Array<string | { name?: string; title?: string }>;
+    };
+    roles?: Array<{
+      permissions?: Array<string | { name?: string; title?: string }>;
+    }>;
+  };
+};
+
 export default function Page(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,6 +79,9 @@ export default function Page(): React.JSX.Element {
   const [rows, setRows] = React.useState<ProjectRow[]>([]);
   const [totalCount, setTotalCount] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
+
+  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
+  const [userPermissions, setUserPermissions] = React.useState<string[]>([]);
 
   const [toastOpen, setToastOpen] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState('');
@@ -78,15 +95,79 @@ export default function Page(): React.JSX.Element {
     setToastOpen(true);
   }, []);
 
-  const getAccessToken = (): string => {
+  const getAdminPayload = (): AdminPayload => {
     const payloadStr = localStorage.getItem('admin_login_payload');
     if (!payloadStr) throw new Error('admin_login_payload not found');
-    const payload = JSON.parse(payloadStr);
-    if (!payload?.access_token) throw new Error('access_token missing');
-    return payload.access_token;
+
+    try {
+      return JSON.parse(payloadStr) as AdminPayload;
+    } catch {
+      throw new Error('admin_login_payload is not valid JSON');
+    }
   };
 
-  // toast from URL (?toast=success|error&msg=...)
+  const getAccessToken = (): string => {
+    const payload = getAdminPayload();
+    if (!payload?.access_token) throw new Error('access_token missing');
+    return String(payload.access_token);
+  };
+
+  const extractPermissionNames = React.useCallback((payload: AdminPayload): string[] => {
+    const result = new Set<string>();
+
+    const pushPermissions = (items?: Array<string | { name?: string; title?: string }>) => {
+      if (!Array.isArray(items)) return;
+
+      items.forEach((item) => {
+        if (typeof item === 'string') {
+          if (item.trim()) result.add(item.trim());
+          return;
+        }
+
+        if (item?.name && String(item.name).trim()) {
+          result.add(String(item.name).trim());
+          return;
+        }
+
+        if (item?.title && String(item.title).trim()) {
+          result.add(String(item.title).trim());
+        }
+      });
+    };
+
+    pushPermissions(payload.permissions);
+    pushPermissions(payload.user?.permissions);
+    pushPermissions(payload.user?.role?.permissions);
+
+    if (Array.isArray(payload.user?.roles)) {
+      payload.user.roles.forEach((role) => pushPermissions(role.permissions));
+    }
+
+    return Array.from(result);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const payload = getAdminPayload();
+      const permissions = extractPermissionNames(payload);
+      setUserPermissions(permissions);
+    } catch (err) {
+      console.error(err);
+      setUserPermissions([]);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, [extractPermissionNames]);
+
+  const hasPermission = React.useCallback(
+    (permission: string) => userPermissions.includes(permission),
+    [userPermissions]
+  );
+
+  const canRead = hasPermission('projects_read');
+  const canCreate = hasPermission('projects_create');
+  const canUpdate = hasPermission('projects_update');
+
   React.useEffect(() => {
     const toast = searchParams.get('toast');
     const msg = searchParams.get('msg');
@@ -97,10 +178,10 @@ export default function Page(): React.JSX.Element {
     }
   }, [router, searchParams, showToast]);
 
-  // Fetch Projects
   const fetchProjects = React.useCallback(async () => {
     try {
       setLoading(true);
+
       if (!apiBase) throw new Error('API base missing');
 
       const accessToken = getAccessToken();
@@ -138,6 +219,8 @@ export default function Page(): React.JSX.Element {
       setTotalCount(json.pagination?.total ?? mapped.length);
     } catch (err) {
       console.error(err);
+      setRows([]);
+      setTotalCount(0);
       showToast(err instanceof Error ? err.message : 'Fetch failed', 'error');
     } finally {
       setLoading(false);
@@ -145,30 +228,45 @@ export default function Page(): React.JSX.Element {
   }, [apiBase, page, rowsPerPage, search, showToast]);
 
   React.useEffect(() => {
+    if (!permissionsLoaded) return;
+
+    if (!canRead) {
+      setLoading(false);
+      setRows([]);
+      setTotalCount(0);
+      return;
+    }
+
     void fetchProjects();
-  }, [fetchProjects]);
+  }, [fetchProjects, permissionsLoaded, canRead]);
 
   React.useEffect(() => {
     setPage(0);
   }, [search]);
 
-  // Edit navigation
   const handleEditProject = (project: ProjectRow) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update projects.', 'error');
+      return;
+    }
+
     router.push(`/dashboard/projects/${project.id}/edit`);
   };
 
-  // Toggle status (FIX endpoint name)
   const handleToggleProject = async (project: ProjectRow, active: 0 | 1) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update projects.', 'error');
+      return;
+    }
+
     const previous = project.active;
 
     try {
       if (!apiBase) throw new Error('API base missing');
       const accessToken = getAccessToken();
 
-      // optimistic UI
       setRows((prev) => prev.map((d) => (d.id === project.id ? { ...d, active } : d)));
 
-      // ✅ Use a PROJECT endpoint, not developer
       const endpoint = `${apiBase}/admin/change_status_project`;
 
       const res = await fetch(endpoint, {
@@ -196,21 +294,49 @@ export default function Page(): React.JSX.Element {
       showToast(payload?.message || 'Project status updated successfully', 'success');
     } catch (err) {
       console.error(err);
-      // rollback
+
       setRows((prev) => prev.map((d) => (d.id === project.id ? { ...d, active: previous } : d)));
+
       showToast(err instanceof Error ? err.message : 'Status update failed', 'error');
     }
   };
+
+  if (!permissionsLoaded) {
+    return (
+      <Stack spacing={3}>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <CircularProgress size={20} />
+          <Typography>Checking permissions...</Typography>
+        </Stack>
+      </Stack>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Projects</Typography>
+        <Alert severity="error" variant="filled">
+          You do not have permission to view projects.
+        </Alert>
+      </Stack>
+    );
+  }
 
   return (
     <Stack spacing={3}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h4">Projects</Typography>
 
-        {/* you had /dashboard/project/new (singular) - keep whatever your routing actually is */}
-        <Button startIcon={<PlusIcon />} variant="contained" onClick={() => router.push('/dashboard/projects/new')}>
-          Add Project
-        </Button>
+        {canCreate ? (
+          <Button
+            startIcon={<PlusIcon />}
+            variant="contained"
+            onClick={() => router.push('/dashboard/projects/new')}
+          >
+            Add Project
+          </Button>
+        ) : null}
       </Stack>
 
       <ProjectsFilters search={search} onSearchChange={setSearch} />
@@ -231,8 +357,8 @@ export default function Page(): React.JSX.Element {
             setRowsPerPage(parseInt(e.target.value, 10));
             setPage(0);
           }}
-          onToggle={handleToggleProject}
-          onEdit={handleEditProject}
+          onToggle={canUpdate ? handleToggleProject : undefined}
+          onEdit={canUpdate ? handleEditProject : undefined}
         />
       )}
 

@@ -3,7 +3,6 @@
 import * as React from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
-// import Checkbox from '@mui/material/Checkbox';
 import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
@@ -31,12 +30,8 @@ interface RolesTableProps {
   page?: number;
   rows?: Role[];
   rowsPerPage?: number;
-
-  // IMPORTANT: pagination handlers (no more noop)
   onPageChange?: (event: unknown, newPage: number) => void;
   onRowsPerPageChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
-
-  // actions
   onEdit?: (role: Role) => void;
   onDelete?: (role: Role) => void;
 }
@@ -53,10 +48,11 @@ export function RolesTable({
 }: RolesTableProps): React.JSX.Element {
   const rowIds = React.useMemo(() => rows.map((r) => r.id), [rows]);
 
-  const { selectAll, deselectAll, selectOne, deselectOne, selected } = useSelection(rowIds);
+  const { selected } = useSelection(rowIds);
 
-  const selectedSome = (selected?.size ?? 0) > 0 && (selected?.size ?? 0) < rows.length;
-  const selectedAll = rows.length > 0 && selected?.size === rows.length;
+  const canEdit = Boolean(onEdit);
+  const canDelete = Boolean(onDelete);
+  const showActions = canEdit || canDelete;
 
   return (
     <Card>
@@ -64,22 +60,13 @@ export function RolesTable({
         <Table sx={{ minWidth: 600 }}>
           <TableHead>
             <TableRow>
-              {/* <TableCell padding="checkbox">
-                <Checkbox
-                  checked={selectedAll}
-                  indeterminate={selectedSome}
-                  onChange={(event) => {
-                    if (event.target.checked) selectAll();
-                    else deselectAll();
-                  }}
-                />
-              </TableCell> */}
-
               <TableCell sx={{ fontWeight: 700 }}>Title</TableCell>
 
-              <TableCell align="right" sx={{ width: 140, fontWeight: 700 }}>
-                Actions
-              </TableCell>
+              {showActions ? (
+                <TableCell align="right" sx={{ width: 140, fontWeight: 700 }}>
+                  Actions
+                </TableCell>
+              ) : null}
             </TableRow>
           </TableHead>
 
@@ -89,56 +76,46 @@ export function RolesTable({
 
               return (
                 <TableRow hover key={row.id} selected={isSelected}>
-                  {/* <TableCell padding="checkbox">
-                    <Checkbox
-                      checked={isSelected}
-                      onChange={(event) => {
-                        if (event.target.checked) selectOne(row.id);
-                        else deselectOne(row.id);
-                      }}
-                    />
-                  </TableCell> */}
-
                   <TableCell>
                     <Typography variant="subtitle2">{row.title}</Typography>
                   </TableCell>
 
-                  <TableCell align="right">
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      <Tooltip title="Edit">
-                        <span>
-                          <IconButton
-                            size="small"
-                            onClick={() => onEdit?.(row)}
-                            disabled={!onEdit}
-                            style={{color: "#9f8151"}}
-                          >
-                            <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
+                  {showActions ? (
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        {canEdit ? (
+                          <Tooltip title="Edit">
+                            <IconButton
+                              size="small"
+                              onClick={() => onEdit?.(row)}
+                              sx={{ color: '#9f8151' }}
+                            >
+                              <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : null}
 
-                      <Tooltip title="Delete">
-                        <span>
-                          <IconButton
-                            size="small"
-                            onClick={() => onDelete?.(row)}
-                            disabled={!onDelete}
-                            style={{color: "#FF0000"}}
-                          >
-                            <TrashIcon fontSize="var(--icon-fontSize-md)" />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    </Stack>
-                  </TableCell>
+                        {canDelete ? (
+                          <Tooltip title="Delete">
+                            <IconButton
+                              size="small"
+                              onClick={() => onDelete?.(row)}
+                              sx={{ color: '#FF0000' }}
+                            >
+                              <TrashIcon fontSize="var(--icon-fontSize-md)" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : null}
+                      </Stack>
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               );
             })}
 
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3}>
+                <TableCell colSpan={showActions ? 2 : 1}>
                   <Typography variant="body2" color="text.secondary">
                     No roles found.
                   </Typography>

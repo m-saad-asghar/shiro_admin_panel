@@ -49,6 +49,20 @@ type ApiBasicResponse = {
   errors?: Record<string, string[]>;
 };
 
+type AdminPayload = {
+  access_token?: string;
+  permissions?: Array<string | { name?: string; title?: string }>;
+  user?: {
+    permissions?: Array<string | { name?: string; title?: string }>;
+    role?: {
+      permissions?: Array<string | { name?: string; title?: string }>;
+    };
+    roles?: Array<{
+      permissions?: Array<string | { name?: string; title?: string }>;
+    }>;
+  };
+};
+
 export type PositionRow = {
   id: string;
   name: string;
@@ -57,7 +71,6 @@ export type PositionRow = {
 };
 
 export default function Page(): React.JSX.Element {
-  // MUI TablePagination is 0-based. API is 1-based.
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
@@ -66,22 +79,21 @@ export default function Page(): React.JSX.Element {
   const [total, setTotal] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
 
-  // Delete dialog state
+  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
+  const [userPermissions, setUserPermissions] = React.useState<string[]>([]);
+
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [selectedPosition, setSelectedPosition] = React.useState<PositionRow | null>(null);
 
-  // Add Position dialog state
   const [addOpen, setAddOpen] = React.useState(false);
   const [newPositionName, setNewPositionName] = React.useState('');
   const [addSubmitting, setAddSubmitting] = React.useState(false);
 
-  // Edit Position dialog state
   const [editOpen, setEditOpen] = React.useState(false);
   const [editPositionId, setEditPositionId] = React.useState<string | null>(null);
   const [editPositionName, setEditPositionName] = React.useState('');
   const [editSubmitting, setEditSubmitting] = React.useState(false);
 
-  // Toast
   const [toastOpen, setToastOpen] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState('');
   const [toastSeverity, setToastSeverity] = React.useState<'success' | 'error' | 'info' | 'warning'>('success');
@@ -94,30 +106,92 @@ export default function Page(): React.JSX.Element {
     setToastOpen(true);
   };
 
-  const getAccessToken = (): string => {
+  const getAdminPayload = (): AdminPayload => {
     const payloadStr = localStorage.getItem('admin_login_payload');
     if (!payloadStr) throw new Error('admin_login_payload not found in localStorage');
 
-    let accessToken: string | null = null;
     try {
-      const payload = JSON.parse(payloadStr);
-      accessToken = payload?.access_token ? String(payload.access_token) : null;
+      return JSON.parse(payloadStr) as AdminPayload;
     } catch {
       throw new Error('admin_login_payload is not valid JSON');
     }
+  };
+
+  const getAccessToken = (): string => {
+    const payload = getAdminPayload();
+    const accessToken = payload?.access_token ? String(payload.access_token) : null;
 
     if (!accessToken) throw new Error('access_token missing inside admin_login_payload');
     return accessToken;
   };
+
+  const extractPermissionNames = React.useCallback((payload: AdminPayload): string[] => {
+    const result = new Set<string>();
+
+    const pushPermissions = (items?: Array<string | { name?: string; title?: string }>) => {
+      if (!Array.isArray(items)) return;
+
+      items.forEach((item) => {
+        if (typeof item === 'string') {
+          if (item.trim()) result.add(item.trim());
+          return;
+        }
+
+        if (item?.name && String(item.name).trim()) {
+          result.add(String(item.name).trim());
+          return;
+        }
+
+        if (item?.title && String(item.title).trim()) {
+          result.add(String(item.title).trim());
+        }
+      });
+    };
+
+    pushPermissions(payload.permissions);
+    pushPermissions(payload.user?.permissions);
+    pushPermissions(payload.user?.role?.permissions);
+
+    if (Array.isArray(payload.user?.roles)) {
+      payload.user.roles.forEach((role) => pushPermissions(role.permissions));
+    }
+
+    return Array.from(result);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const payload = getAdminPayload();
+      const permissions = extractPermissionNames(payload);
+      setUserPermissions(permissions);
+    } catch (err) {
+      console.error(err);
+      setUserPermissions([]);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, [extractPermissionNames]);
+
+  const hasPermission = React.useCallback(
+    (permission: string) => userPermissions.includes(permission),
+    [userPermissions]
+  );
+
+  const canRead = hasPermission('positions_read');
+  const canCreate = hasPermission('positions_create');
+  const canUpdate = hasPermission('positions_update');
+  const canDelete = hasPermission('positions_delete');
 
   const fetchPositions = React.useCallback(
     async (opts?: { page?: number; perPage?: number; search?: string }) => {
       try {
         setLoading(true);
 
+        if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
+
         const accessToken = getAccessToken();
 
-        const apiPage = (opts?.page ?? page) + 1; // convert 0-based -> 1-based
+        const apiPage = (opts?.page ?? page) + 1;
         const perPage = opts?.perPage ?? rowsPerPage;
         const q = (opts?.search ?? search).trim();
 
@@ -151,6 +225,7 @@ export default function Page(): React.JSX.Element {
         console.error(err);
         setRows([]);
         setTotal(0);
+        showToast(err instanceof Error ? err.message : 'Failed to fetch positions', 'error');
       } finally {
         setLoading(false);
       }
@@ -159,15 +234,28 @@ export default function Page(): React.JSX.Element {
   );
 
   React.useEffect(() => {
+    if (!permissionsLoaded) return;
+
+    if (!canRead) {
+      setLoading(false);
+      setRows([]);
+      setTotal(0);
+      return;
+    }
+
     void fetchPositions();
-  }, [fetchPositions]);
+  }, [fetchPositions, permissionsLoaded, canRead]);
 
   React.useEffect(() => {
     setPage(0);
   }, [search]);
 
-  // Delete handlers
   const handleDeleteClick = (position: PositionRow) => {
+    if (!canDelete) {
+      showToast('You do not have permission to delete positions.', 'error');
+      return;
+    }
+
     setSelectedPosition(position);
     setDeleteOpen(true);
   };
@@ -175,8 +263,15 @@ export default function Page(): React.JSX.Element {
   const handleDeleteConfirm = async () => {
     if (!selectedPosition) return;
 
+    if (!canDelete) {
+      showToast('You do not have permission to delete positions.', 'error');
+      return;
+    }
+
     try {
       setLoading(true);
+
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
 
       const accessToken = getAccessToken();
 
@@ -214,8 +309,12 @@ export default function Page(): React.JSX.Element {
     }
   };
 
-  // Add Position handlers
   const openAddDialog = () => {
+    if (!canCreate) {
+      showToast('You do not have permission to create positions.', 'error');
+      return;
+    }
+
     setAddOpen(true);
     setNewPositionName('');
     setAddSubmitting(false);
@@ -227,11 +326,18 @@ export default function Page(): React.JSX.Element {
   };
 
   const handleAddConfirm = async () => {
+    if (!canCreate) {
+      showToast('You do not have permission to create positions.', 'error');
+      return;
+    }
+
     const cleanName = newPositionName.trim();
     if (!cleanName || addSubmitting) return;
 
     try {
       setAddSubmitting(true);
+
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
 
       const accessToken = getAccessToken();
 
@@ -285,8 +391,12 @@ export default function Page(): React.JSX.Element {
     }
   };
 
-  // Edit Position handlers
   const openEditDialog = (position: PositionRow) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update positions.', 'error');
+      return;
+    }
+
     setEditOpen(true);
     setEditPositionId(position.id);
     setEditPositionName(position.name);
@@ -301,11 +411,18 @@ export default function Page(): React.JSX.Element {
   };
 
   const handleEditConfirm = async () => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update positions.', 'error');
+      return;
+    }
+
     const cleanName = editPositionName.trim();
     if (!editPositionId || !cleanName || editSubmitting) return;
 
     try {
       setEditSubmitting(true);
+
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
 
       const accessToken = getAccessToken();
 
@@ -341,7 +458,6 @@ export default function Page(): React.JSX.Element {
       }
 
       closeEditDialog();
-
       await fetchPositions({ page, perPage: rowsPerPage, search });
       showToast(payload?.message ? String(payload.message) : 'Position updated successfully.', 'success');
     } catch (err) {
@@ -353,6 +469,28 @@ export default function Page(): React.JSX.Element {
     }
   };
 
+  if (!permissionsLoaded) {
+    return (
+      <Stack spacing={3}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', py: 2 }}>
+          <CircularProgress size={22} />
+          <Typography variant="body2">Checking permissions...</Typography>
+        </Stack>
+      </Stack>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Positions</Typography>
+        <Alert severity="error" variant="filled">
+          You do not have permission to view positions.
+        </Alert>
+      </Stack>
+    );
+  }
+
   return (
     <Stack spacing={3}>
       <Stack direction="row" spacing={3}>
@@ -360,15 +498,17 @@ export default function Page(): React.JSX.Element {
           <Typography variant="h4">Positions</Typography>
         </Stack>
 
-        <div>
-          <Button
-            startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />}
-            variant="contained"
-            onClick={openAddDialog}
-          >
-            Add Position
-          </Button>
-        </div>
+        {canCreate ? (
+          <div>
+            <Button
+              startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />}
+              variant="contained"
+              onClick={openAddDialog}
+            >
+              Add Position
+            </Button>
+          </div>
+        ) : null}
       </Stack>
 
       <PositionsFilters search={search} onSearchChange={setSearch} />
@@ -389,8 +529,8 @@ export default function Page(): React.JSX.Element {
             setRowsPerPage(parseInt(e.target.value, 10));
             setPage(0);
           }}
-          onEdit={(position) => openEditDialog(position)}
-          onDelete={(position) => handleDeleteClick(position)}
+          onEdit={canUpdate ? (position) => openEditDialog(position) : undefined}
+          onDelete={canDelete ? (position) => handleDeleteClick(position) : undefined}
         />
       )}
 
@@ -464,7 +604,13 @@ export default function Page(): React.JSX.Element {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
+      <Dialog
+        open={deleteOpen}
+        onClose={() => {
+          if (loading) return;
+          setDeleteOpen(false);
+        }}
+      >
         <DialogTitle>Delete Position</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -475,7 +621,12 @@ export default function Page(): React.JSX.Element {
           <Button onClick={() => void handleDeleteConfirm()} color="error" variant="contained">
             Delete
           </Button>
-          <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
+          <Button
+            onClick={() => setDeleteOpen(false)}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
         </DialogActions>
       </Dialog>
 

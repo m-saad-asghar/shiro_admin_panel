@@ -1,4 +1,3 @@
-// app/dashboard/listings/page.tsx
 'use client';
 
 import * as React from 'react';
@@ -16,14 +15,14 @@ type ApiListing = {
   reference: string;
   first_image?: string | null;
   property_t: string | null;
-  price: number | string | null; // ✅ backend may return string
+  price: number | string | null;
   community: string | null;
   sub_community: string | null;
   property: string | null;
   property_type: string | null;
   property_category: string | null;
   title: string | null;
-  active: number; // 0/1
+  active: number;
   furnishing: string | null;
   created_at: string | null;
 };
@@ -40,10 +39,24 @@ type ApiResponse = {
   };
 };
 
+type AdminPayload = {
+  access_token?: string;
+  permissions?: Array<string | { name?: string; title?: string }>;
+  user?: {
+    permissions?: Array<string | { name?: string; title?: string }>;
+    role?: {
+      permissions?: Array<string | { name?: string; title?: string }>;
+    };
+    roles?: Array<{
+      permissions?: Array<string | { name?: string; title?: string }>;
+    }>;
+  };
+};
+
 export type ListingRow = {
   id: string;
   reference: string;
-  first_image: string; // ✅ always a string in UI
+  first_image: string;
   property_t: string | null;
   price: number | null;
   community: string | null;
@@ -57,8 +70,14 @@ export type ListingRow = {
   created_at: string | null;
 };
 
+type ApiBasicResponse = {
+  success?: boolean;
+  message?: string;
+  data?: unknown;
+  errors?: Record<string, string[]>;
+};
+
 export default function Page(): React.JSX.Element {
-  // NOTE: MUI TablePagination uses 0-based page; backend uses 1-based page.
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
   const [search, setSearch] = React.useState('');
@@ -67,7 +86,9 @@ export default function Page(): React.JSX.Element {
   const [totalCount, setTotalCount] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
 
-  // Toast
+  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
+  const [userPermissions, setUserPermissions] = React.useState<string[]>([]);
+
   const [toastOpen, setToastOpen] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState('');
   const [toastSeverity, setToastSeverity] = React.useState<'success' | 'error' | 'info' | 'warning'>('success');
@@ -80,22 +101,79 @@ export default function Page(): React.JSX.Element {
     setToastOpen(true);
   };
 
-  const getAccessToken = (): string => {
+  const getAdminPayload = (): AdminPayload => {
     const payloadStr = localStorage.getItem('admin_login_payload');
     if (!payloadStr) throw new Error('admin_login_payload not found in localStorage');
 
-    let accessToken: string | null = null;
-
     try {
-      const payload = JSON.parse(payloadStr);
-      accessToken = payload?.access_token ? String(payload.access_token) : null;
+      return JSON.parse(payloadStr) as AdminPayload;
     } catch {
       throw new Error('admin_login_payload is not valid JSON');
     }
+  };
+
+  const getAccessToken = (): string => {
+    const payload = getAdminPayload();
+    const accessToken = payload?.access_token ? String(payload.access_token) : null;
 
     if (!accessToken) throw new Error('access_token missing inside admin_login_payload');
     return accessToken;
   };
+
+  const extractPermissionNames = React.useCallback((payload: AdminPayload): string[] => {
+    const result = new Set<string>();
+
+    const pushPermissions = (items?: Array<string | { name?: string; title?: string }>) => {
+      if (!Array.isArray(items)) return;
+
+      items.forEach((item) => {
+        if (typeof item === 'string') {
+          if (item.trim()) result.add(item.trim());
+          return;
+        }
+
+        if (item?.name && String(item.name).trim()) {
+          result.add(String(item.name).trim());
+          return;
+        }
+
+        if (item?.title && String(item.title).trim()) {
+          result.add(String(item.title).trim());
+        }
+      });
+    };
+
+    pushPermissions(payload.permissions);
+    pushPermissions(payload.user?.permissions);
+    pushPermissions(payload.user?.role?.permissions);
+
+    if (Array.isArray(payload.user?.roles)) {
+      payload.user.roles.forEach((role) => pushPermissions(role.permissions));
+    }
+
+    return Array.from(result);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const payload = getAdminPayload();
+      const permissions = extractPermissionNames(payload);
+      setUserPermissions(permissions);
+    } catch (err) {
+      console.error(err);
+      setUserPermissions([]);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, [extractPermissionNames]);
+
+  const hasPermission = React.useCallback(
+    (permission: string) => userPermissions.includes(permission),
+    [userPermissions]
+  );
+
+  const canRead = hasPermission('listings_read');
+  const canUpdate = hasPermission('listings_update');
 
   const fetchListings = React.useCallback(async () => {
     try {
@@ -126,10 +204,8 @@ export default function Page(): React.JSX.Element {
         id: String(r.id),
         reference: r.reference ?? '',
         first_image: r.first_image ? String(r.first_image) : '',
-
         property_t: r.property_t ?? null,
         price: typeof r.price === 'number' ? r.price : r.price ? Number(r.price) : null,
-
         community: r.community ?? null,
         sub_community: r.sub_community ?? null,
         property: r.property ?? null,
@@ -154,74 +230,106 @@ export default function Page(): React.JSX.Element {
   }, [apiBase, page, rowsPerPage, search]);
 
   React.useEffect(() => {
-    void fetchListings();
-  }, [fetchListings]);
+    if (!permissionsLoaded) return;
 
-  // When search changes, reset to first page
+    if (!canRead) {
+      setLoading(false);
+      setRows([]);
+      setTotalCount(0);
+      return;
+    }
+
+    void fetchListings();
+  }, [fetchListings, permissionsLoaded, canRead]);
+
   React.useEffect(() => {
     setPage(0);
   }, [search]);
 
-  // ✅ Toggle active (REAL backend call now)
-const handleToggle = async (listing: ListingRow) => {
-  const previous = listing.active;
-  const newStatus = listing.active === 1 ? 0 : 1;
-
-  // Optimistic UI update
-  setRows((prev) =>
-    prev.map((r) =>
-      r.id === listing.id ? { ...r, active: newStatus } : r
-    )
-  );
-
-  try {
-    if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
-    const accessToken = getAccessToken();
-
-    const res = await fetch(`${apiBase}/admin/change_status_listing`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        reference: listing.reference,
-        active: newStatus,
-      }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`Status update failed. HTTP ${res.status}`);
+  const handleToggle = async (listing: ListingRow) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update listings.', 'error');
+      return;
     }
 
-    const json = await res.json();
+    const previous = listing.active;
+    const newStatus = listing.active === 1 ? 0 : 1;
 
-    if (!json.success) {
-      throw new Error(json.message || 'Status update failed');
-    }
-
-    showToast(
-      `Listing ${newStatus === 1 ? 'activated' : 'deactivated'} successfully`,
-      'success'
-    );
-  } catch (err) {
-    console.error(err);
-
-    // rollback UI
     setRows((prev) =>
-      prev.map((r) =>
-        r.id === listing.id ? { ...r, active: previous } : r
-      )
+      prev.map((r) => (r.id === listing.id ? { ...r, active: newStatus } : r))
     );
 
-    showToast(
-      err instanceof Error ? err.message : 'Status update failed',
-      'error'
+    try {
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
+      const accessToken = getAccessToken();
+
+      const res = await fetch(`${apiBase}/admin/change_status_listing`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          reference: listing.reference,
+          active: newStatus,
+        }),
+      });
+
+      let json: ApiBasicResponse | null = null;
+      try {
+        json = (await res.json()) as ApiBasicResponse;
+      } catch {
+        json = null;
+      }
+
+      if (!res.ok) {
+        throw new Error(json?.message || `Status update failed. HTTP ${res.status}`);
+      }
+
+      if (json && json.success === false) {
+        throw new Error(json.message || 'Status update failed');
+      }
+
+      showToast(
+        `Listing ${newStatus === 1 ? 'activated' : 'deactivated'} successfully`,
+        'success'
+      );
+    } catch (err) {
+      console.error(err);
+
+      setRows((prev) =>
+        prev.map((r) => (r.id === listing.id ? { ...r, active: previous } : r))
+      );
+
+      showToast(
+        err instanceof Error ? err.message : 'Status update failed',
+        'error'
+      );
+    }
+  };
+
+  if (!permissionsLoaded) {
+    return (
+      <Stack spacing={3}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', py: 2 }}>
+          <CircularProgress size={22} />
+          <Typography variant="body2">Checking permissions...</Typography>
+        </Stack>
+      </Stack>
     );
   }
-};
 
+  if (!canRead) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Listings</Typography>
+        <Alert severity="error" variant="filled">
+          You do not have permission to view listings.
+        </Alert>
+      </Stack>
+    );
+  }
 
   return (
     <Stack spacing={3}>
@@ -249,7 +357,7 @@ const handleToggle = async (listing: ListingRow) => {
             setRowsPerPage(parseInt(e.target.value, 10));
             setPage(0);
           }}
-          onToggle={handleToggle}
+          onToggle={canUpdate ? handleToggle : undefined}
         />
       )}
 

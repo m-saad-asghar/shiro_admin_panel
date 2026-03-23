@@ -74,6 +74,20 @@ type ApiBasicResponse = {
   errors?: Record<string, string[]>;
 };
 
+type AdminPayload = {
+  access_token?: string;
+  permissions?: Array<string | { name?: string; title?: string }>;
+  user?: {
+    permissions?: Array<string | { name?: string; title?: string }>;
+    role?: {
+      permissions?: Array<string | { name?: string; title?: string }>;
+    };
+    roles?: Array<{
+      permissions?: Array<string | { name?: string; title?: string }>;
+    }>;
+  };
+};
+
 export type PermissionGroupRow = {
   id: string;
   title: string;
@@ -86,6 +100,10 @@ export default function Page(): React.JSX.Element {
   const [search, setSearch] = React.useState('');
   const [rows, setRows] = React.useState<PermissionGroupRow[]>([]);
   const [loading, setLoading] = React.useState(true);
+
+  // permissions
+  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
+  const [userPermissions, setUserPermissions] = React.useState<string[]>([]);
 
   // ✅ Add modal state
   const [addOpen, setAddOpen] = React.useState(false);
@@ -122,25 +140,88 @@ export default function Page(): React.JSX.Element {
     setToastOpen(true);
   };
 
-  const getAccessToken = (): string => {
+  const getAdminPayload = (): AdminPayload => {
     const payloadStr = localStorage.getItem('admin_login_payload');
     if (!payloadStr) throw new Error('admin_login_payload not found in localStorage');
 
-    let accessToken: string | null = null;
     try {
-      const payload = JSON.parse(payloadStr);
-      accessToken = payload?.access_token ? String(payload.access_token) : null;
+      return JSON.parse(payloadStr) as AdminPayload;
     } catch {
       throw new Error('admin_login_payload is not valid JSON');
     }
+  };
+
+  const getAccessToken = (): string => {
+    const payload = getAdminPayload();
+    const accessToken = payload?.access_token ? String(payload.access_token) : null;
 
     if (!accessToken) throw new Error('access_token missing inside admin_login_payload');
     return accessToken;
   };
 
+  const extractPermissionNames = React.useCallback((payload: AdminPayload): string[] => {
+    const result = new Set<string>();
+
+    const pushPermissions = (items?: Array<string | { name?: string; title?: string }>) => {
+      if (!Array.isArray(items)) return;
+
+      items.forEach((item) => {
+        if (typeof item === 'string') {
+          if (item.trim()) result.add(item.trim());
+          return;
+        }
+
+        if (item?.name && String(item.name).trim()) {
+          result.add(String(item.name).trim());
+          return;
+        }
+
+        if (item?.title && String(item.title).trim()) {
+          result.add(String(item.title).trim());
+        }
+      });
+    };
+
+    pushPermissions(payload.permissions);
+    pushPermissions(payload.user?.permissions);
+    pushPermissions(payload.user?.role?.permissions);
+
+    if (Array.isArray(payload.user?.roles)) {
+      payload.user.roles.forEach((role) => pushPermissions(role.permissions));
+    }
+
+    return Array.from(result);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const payload = getAdminPayload();
+      const permissions = extractPermissionNames(payload);
+      setUserPermissions(permissions);
+    } catch (err) {
+      console.error(err);
+      setUserPermissions([]);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, [extractPermissionNames]);
+
+  const hasPermission = React.useCallback(
+    (permission: string) => {
+      return userPermissions.includes(permission);
+    },
+    [userPermissions]
+  );
+
+  const canRead = hasPermission('permissions_read');
+  const canCreate = hasPermission('permissions_create');
+  const canUpdate = hasPermission('permissions_update');
+
   const fetchPermissions = React.useCallback(async () => {
     try {
       setLoading(true);
+
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
 
       const accessToken = getAccessToken();
 
@@ -170,14 +251,23 @@ export default function Page(): React.JSX.Element {
     } catch (err) {
       console.error(err);
       setRows([]);
+      showToast(err instanceof Error ? err.message : 'Failed to fetch permissions', 'error');
     } finally {
       setLoading(false);
     }
   }, [apiBase]);
 
   React.useEffect(() => {
+    if (!permissionsLoaded) return;
+
+    if (!canRead) {
+      setLoading(false);
+      setRows([]);
+      return;
+    }
+
     void fetchPermissions();
-  }, [fetchPermissions]);
+  }, [fetchPermissions, permissionsLoaded, canRead]);
 
   // Search role title OR permission title
   const filteredRows = React.useMemo(() => {
@@ -201,6 +291,8 @@ export default function Page(): React.JSX.Element {
   }, [filteredRows, page, rowsPerPage]);
 
   const loadAddModalData = async () => {
+    if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
+
     const accessToken = getAccessToken();
 
     const [rolesRes, permsRes] = await Promise.all([
@@ -228,6 +320,11 @@ export default function Page(): React.JSX.Element {
   // ✅ ADD
   // ---------------------------
   const openAddDialog = async () => {
+    if (!canCreate) {
+      showToast('You do not have permission to create permissions.', 'error');
+      return;
+    }
+
     try {
       setAddSubmitting(true);
       setAddOpen(true);
@@ -261,6 +358,11 @@ export default function Page(): React.JSX.Element {
   };
 
   const handleAddConfirm = async () => {
+    if (!canCreate) {
+      showToast('You do not have permission to create permissions.', 'error');
+      return;
+    }
+
     const roleId = selectedRoleId.trim();
 
     if (!roleId) {
@@ -345,6 +447,11 @@ export default function Page(): React.JSX.Element {
   };
 
   const openEditDialog = async (row: PermissionGroupRow) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update permissions.', 'error');
+      return;
+    }
+
     try {
       setEditSubmitting(true);
       setEditOpen(true);
@@ -371,6 +478,11 @@ export default function Page(): React.JSX.Element {
   };
 
   const handleEditConfirm = async () => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update permissions.', 'error');
+      return;
+    }
+
     const roleId = editRoleId.trim();
 
     if (!roleId) {
@@ -388,7 +500,6 @@ export default function Page(): React.JSX.Element {
     try {
       setEditSubmitting(true);
 
-      // Compare old vs new (if same => allow and just show Saved)
       const existingRow = rows.find((r) => r.id === roleId);
       const oldIds = new Set((existingRow?.permissions ?? []).map((p) => String(p.id)));
       const newIds = new Set(Array.from(editPermissionIds).map(String));
@@ -455,8 +566,35 @@ export default function Page(): React.JSX.Element {
   };
 
   const handleEdit = (row: PermissionGroupRow) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update permissions.', 'error');
+      return;
+    }
+
     void openEditDialog(row);
   };
+
+  if (!permissionsLoaded) {
+    return (
+      <Stack spacing={3}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', py: 2 }}>
+          <CircularProgress size={22} />
+          <Typography variant="body2">Checking permissions...</Typography>
+        </Stack>
+      </Stack>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Permissions</Typography>
+        <Alert severity="error" variant="filled">
+          You do not have permission to view permissions.
+        </Alert>
+      </Stack>
+    );
+  }
 
   return (
     <Stack spacing={3}>
@@ -465,11 +603,13 @@ export default function Page(): React.JSX.Element {
           <Typography variant="h4">Permissions</Typography>
         </Stack>
 
-        <div>
-          <Button startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />} variant="contained" onClick={openAddDialog}>
-            Add
-          </Button>
-        </div>
+        {canCreate ? (
+          <div>
+            <Button startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />} variant="contained" onClick={openAddDialog}>
+              Add
+            </Button>
+          </div>
+        ) : null}
       </Stack>
 
       <PermissionsFilters search={search} onSearchChange={setSearch} />
@@ -490,7 +630,7 @@ export default function Page(): React.JSX.Element {
             setRowsPerPage(parseInt(e.target.value, 10));
             setPage(0);
           }}
-          onEdit={(row) => handleEdit(row)}
+          onEdit={canUpdate ? (row) => handleEdit(row) : undefined}
         />
       )}
 
@@ -590,7 +730,6 @@ export default function Page(): React.JSX.Element {
 
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={2}>
-            {/* Role locked in edit */}
             <FormControl fullWidth variant="outlined" disabled>
               <InputLabel id="edit-role-label">Role</InputLabel>
               <Select labelId="edit-role-label" label="Role" value={editRoleId}>

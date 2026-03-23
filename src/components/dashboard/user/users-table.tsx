@@ -1,4 +1,3 @@
-// components/dashboard/user/users-table.tsx
 'use client';
 
 import * as React from 'react';
@@ -28,6 +27,7 @@ export interface User {
   last_name: string;
   email: string;
   phone_number: string;
+  role: string;
   profile_image: string;
   active: number;
   created_at: string;
@@ -39,10 +39,8 @@ interface UsersTableProps {
   page?: number;
   rows?: User[];
   rowsPerPage?: number;
-
   onPageChange?: (event: unknown, newPage: number) => void;
   onRowsPerPageChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
-
   onEdit?: (user: User) => void;
   onDelete?: (user: User) => void;
   onToggle?: (user: User) => void;
@@ -59,6 +57,13 @@ export function UsersTable({
   onDelete,
   onToggle,
 }: UsersTableProps): React.JSX.Element {
+  const canEdit = Boolean(onEdit);
+  const canDelete = Boolean(onDelete);
+  const canToggle = Boolean(onToggle);
+  const showActions = canEdit || canDelete;
+
+  const totalColumns = 6 + (canToggle ? 1 : 0) + (showActions ? 1 : 0);
+
   return (
     <Card>
       <Box sx={{ overflowX: 'auto' }}>
@@ -67,19 +72,33 @@ export function UsersTable({
             <TableRow>
               <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Profile Image</TableCell>
-               <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Role</TableCell>
+
+              {canToggle ? <TableCell sx={{ fontWeight: 700 }}>Status</TableCell> : null}
+
               <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
-              <TableCell align="right" sx={{ width: 140, fontWeight: 700 }}>
-                Actions
-              </TableCell>
+
+              {showActions ? (
+                <TableCell align="right" sx={{ width: 140, fontWeight: 700 }}>
+                  Actions
+                </TableCell>
+              ) : null}
             </TableRow>
           </TableHead>
 
           <TableBody>
-            {rows.map((row) => {
-              return (
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={totalColumns}>
+                  <Typography variant="body2" color="text.secondary">
+                    No users found.
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              rows.map((row) => (
                 <TableRow hover key={row.id}>
                   <TableCell>
                     <Typography variant="subtitle2">
@@ -87,81 +106,86 @@ export function UsersTable({
                     </Typography>
                   </TableCell>
 
-                 <TableCell>
-  <Image
-    src={
-      row.profile_image && row.profile_image.trim() !== ''
-        ? usersImagesUrl(row.profile_image)
-        : usersImagesUrl('default_user.avif')
-    }
-    alt={`${row.first_name} ${row.last_name}`}
-    width={100}
-    height={100}
-    style={{
-      borderRadius: '10%',
-      objectFit: 'cover',
-    }}
-  />
-</TableCell>
+                  <TableCell>
+                    <Image
+                      src={
+                        row.profile_image && row.profile_image.trim() !== ''
+                          ? usersImagesUrl(row.profile_image)
+                          : usersImagesUrl('default_user.avif')
+                      }
+                      alt={`${row.first_name} ${row.last_name}`}
+                      width={100}
+                      height={100}
+                      style={{
+                        borderRadius: '10%',
+                        objectFit: 'cover',
+                      }}
+                    />
+                  </TableCell>
 
-                   <TableCell>{row.email}</TableCell>
+                  <TableCell>{row.email}</TableCell>
                   <TableCell>{row.phone_number}</TableCell>
+                  <TableCell>{row.role}</TableCell>
+
+                  {canToggle ? (
+                    <TableCell>
+                      <Switch
+                        checked={row.active === 1}
+                        onChange={() => onToggle?.(row)}
+                        sx={{
+                          '& .MuiSwitch-switchBase.Mui-checked': {
+                            color: '#0b4a35',
+                          },
+                          '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                            backgroundColor: '#0b4a35',
+                          },
+                        }}
+                      />
+                    </TableCell>
+                  ) : null}
 
                   <TableCell>
-                    <Switch
-  checked={row.active === 1}
-  onChange={() => onToggle?.(row)}
-  sx={{
-    '& .MuiSwitch-switchBase.Mui-checked': {
-      color: '#0b4a35',
-    },
-    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-      backgroundColor: '#0b4a35',
-    },
-  }}
-/>
-
+                    <Typography variant="body2" color="text.secondary">
+                      {new Date(row.created_at).toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </Typography>
                   </TableCell>
 
-                  <TableCell>
-  <Typography variant="body2" color="text.secondary">
-    {new Date(row.created_at).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    })}
-  </Typography>
-</TableCell>
+                  {showActions ? (
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        {canEdit ? (
+                          <Tooltip title="Edit">
+                            <IconButton
+                              size="small"
+                              onClick={() => onEdit?.(row)}
+                              sx={{ color: '#9f8151' }}
+                            >
+                              <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : null}
 
-
-                  <TableCell align="right">
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      <Tooltip title="Edit">
-                        <IconButton size="small" onClick={() => onEdit?.(row)} style={{ color: '#9f8151' }}>
-                          <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
-                        </IconButton>
-                      </Tooltip>
-
-                      {/* <Tooltip title="Delete">
-                        <IconButton size="small" onClick={() => onDelete?.(row)} style={{ color: '#FF0000' }}>
-                          <TrashIcon fontSize="var(--icon-fontSize-md)" />
-                        </IconButton>
-                      </Tooltip> */}
-                    </Stack>
-                  </TableCell>
+                        {canDelete ? (
+                          <Tooltip title="Delete">
+                            <IconButton
+                              size="small"
+                              onClick={() => onDelete?.(row)}
+                              sx={{ color: '#FF0000' }}
+                            >
+                              <TrashIcon fontSize="var(--icon-fontSize-md)" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : null}
+                      </Stack>
+                    </TableCell>
+                  ) : null}
                 </TableRow>
-              );
-            })}
-
-            {rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    No users found.
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            ) : null}
+              ))
+            )}
           </TableBody>
         </Table>
       </Box>

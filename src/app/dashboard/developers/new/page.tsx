@@ -273,7 +273,7 @@ export default function NewDeveloperPage(): React.JSX.Element {
             helperText={errors.slug || 'Auto-generated from name, but you can edit it.'}
           />
 
-          <TextField
+          {/* <TextField
             label="Email (optional)"
             value={email}
             onChange={(e) => {
@@ -284,7 +284,7 @@ export default function NewDeveloperPage(): React.JSX.Element {
             fullWidth
             error={Boolean(errors.email)}
             helperText={errors.email || ''}
-          />
+          /> */}
 
           <TextField
             label="Description *"

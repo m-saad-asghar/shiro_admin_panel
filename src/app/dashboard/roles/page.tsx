@@ -13,6 +13,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import TextField from '@mui/material/TextField';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
 
 import { PlusIcon } from '@phosphor-icons/react/dist/ssr/Plus';
 
@@ -44,6 +45,20 @@ export type RoleRow = {
   title: string;
 };
 
+type AdminPayload = {
+  access_token?: string;
+  permissions?: Array<string | { name?: string; title?: string }>;
+  user?: {
+    permissions?: Array<string | { name?: string; title?: string }>;
+    role?: {
+      permissions?: Array<string | { name?: string; title?: string }>;
+    };
+    roles?: Array<{
+      permissions?: Array<string | { name?: string; title?: string }>;
+    }>;
+  };
+};
+
 export default function Page(): React.JSX.Element {
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
@@ -51,22 +66,26 @@ export default function Page(): React.JSX.Element {
   const [rows, setRows] = React.useState<RoleRow[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  // 🔴 Delete dialog state
+  // permissions
+  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
+  const [userPermissions, setUserPermissions] = React.useState<string[]>([]);
+
+  // delete dialog state
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [selectedRole, setSelectedRole] = React.useState<RoleRow | null>(null);
 
-  // ✅ Add Role dialog state
+  // add role dialog state
   const [addOpen, setAddOpen] = React.useState(false);
   const [newRoleTitle, setNewRoleTitle] = React.useState('');
   const [addSubmitting, setAddSubmitting] = React.useState(false);
 
-  // ✅ Edit Role dialog state
+  // edit role dialog state
   const [editOpen, setEditOpen] = React.useState(false);
   const [editRoleId, setEditRoleId] = React.useState<string | null>(null);
   const [editRoleTitle, setEditRoleTitle] = React.useState('');
   const [editSubmitting, setEditSubmitting] = React.useState(false);
 
-  // ✅ Toast
+  // toast
   const [toastOpen, setToastOpen] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState('');
   const [toastSeverity, setToastSeverity] = React.useState<'success' | 'error' | 'info' | 'warning'>('success');
@@ -79,25 +98,89 @@ export default function Page(): React.JSX.Element {
     setToastOpen(true);
   };
 
-  const getAccessToken = (): string => {
+  const getAdminPayload = (): AdminPayload => {
     const payloadStr = localStorage.getItem('admin_login_payload');
     if (!payloadStr) throw new Error('admin_login_payload not found in localStorage');
 
-    let accessToken: string | null = null;
     try {
-      const payload = JSON.parse(payloadStr);
-      accessToken = payload?.access_token ? String(payload.access_token) : null;
+      return JSON.parse(payloadStr) as AdminPayload;
     } catch {
       throw new Error('admin_login_payload is not valid JSON');
     }
+  };
+
+  const getAccessToken = (): string => {
+    const payload = getAdminPayload();
+    const accessToken = payload?.access_token ? String(payload.access_token) : null;
 
     if (!accessToken) throw new Error('access_token missing inside admin_login_payload');
     return accessToken;
   };
 
+  const extractPermissionNames = React.useCallback((payload: AdminPayload): string[] => {
+    const result = new Set<string>();
+
+    const pushPermissions = (items?: Array<string | { name?: string; title?: string }>) => {
+      if (!Array.isArray(items)) return;
+
+      items.forEach((item) => {
+        if (typeof item === 'string') {
+          if (item.trim()) result.add(item.trim());
+          return;
+        }
+
+        if (item?.name && String(item.name).trim()) {
+          result.add(String(item.name).trim());
+          return;
+        }
+
+        if (item?.title && String(item.title).trim()) {
+          result.add(String(item.title).trim());
+        }
+      });
+    };
+
+    pushPermissions(payload.permissions);
+    pushPermissions(payload.user?.permissions);
+    pushPermissions(payload.user?.role?.permissions);
+
+    if (Array.isArray(payload.user?.roles)) {
+      payload.user?.roles.forEach((role) => pushPermissions(role.permissions));
+    }
+
+    return Array.from(result);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const payload = getAdminPayload();
+      const permissions = extractPermissionNames(payload);
+      setUserPermissions(permissions);
+    } catch (err) {
+      console.error(err);
+      setUserPermissions([]);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, [extractPermissionNames]);
+
+  const hasPermission = React.useCallback(
+    (permission: string) => {
+      return userPermissions.includes(permission);
+    },
+    [userPermissions]
+  );
+
+  const canRead = hasPermission('roles_read');
+  const canCreate = hasPermission('roles_create');
+  const canUpdate = hasPermission('roles_update');
+  const canDelete = hasPermission('roles_delete');
+
   const fetchRoles = React.useCallback(async () => {
     try {
       setLoading(true);
+
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
 
       const accessToken = getAccessToken();
 
@@ -123,14 +206,21 @@ export default function Page(): React.JSX.Element {
     } catch (err) {
       console.error(err);
       setRows([]);
+      showToast(err instanceof Error ? err.message : 'Failed to fetch roles', 'error');
     } finally {
       setLoading(false);
     }
   }, [apiBase]);
 
   React.useEffect(() => {
+    if (!permissionsLoaded) return;
+    if (!canRead) {
+      setLoading(false);
+      setRows([]);
+      return;
+    }
     void fetchRoles();
-  }, [fetchRoles]);
+  }, [fetchRoles, permissionsLoaded, canRead]);
 
   const filteredRows = React.useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -144,19 +234,28 @@ export default function Page(): React.JSX.Element {
 
   const paginatedRows = applyPagination(filteredRows, page, rowsPerPage);
 
-  // ---------------------------
-  // Delete handlers
-  // ---------------------------
+  // delete handlers
   const handleDeleteClick = (role: RoleRow) => {
+    if (!canDelete) {
+      showToast('You do not have permission to delete roles.', 'error');
+      return;
+    }
+
     setSelectedRole(role);
     setDeleteOpen(true);
   };
 
   const handleDeleteConfirm = async () => {
     if (!selectedRole) return;
+    if (!canDelete) {
+      showToast('You do not have permission to delete roles.', 'error');
+      return;
+    }
 
     try {
       setLoading(true);
+
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
 
       const accessToken = getAccessToken();
 
@@ -196,10 +295,13 @@ export default function Page(): React.JSX.Element {
     }
   };
 
-  // ---------------------------
-  // Add Role handlers
-  // ---------------------------
+  // add role handlers
   const openAddDialog = () => {
+    if (!canCreate) {
+      showToast('You do not have permission to create roles.', 'error');
+      return;
+    }
+
     setAddOpen(true);
     setNewRoleTitle('');
     setAddSubmitting(false);
@@ -214,8 +316,15 @@ export default function Page(): React.JSX.Element {
     const cleanTitle = newRoleTitle.trim();
     if (!cleanTitle || addSubmitting) return;
 
+    if (!canCreate) {
+      showToast('You do not have permission to create roles.', 'error');
+      return;
+    }
+
     try {
       setAddSubmitting(true);
+
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
 
       const accessToken = getAccessToken();
 
@@ -267,10 +376,13 @@ export default function Page(): React.JSX.Element {
     }
   };
 
-  // ---------------------------
-  // Edit Role handlers
-  // ---------------------------
+  // edit role handlers
   const openEditDialog = (role: RoleRow) => {
+    if (!canUpdate) {
+      showToast('You do not have permission to update roles.', 'error');
+      return;
+    }
+
     setEditOpen(true);
     setEditRoleId(role.id);
     setEditRoleTitle(role.title);
@@ -288,13 +400,18 @@ export default function Page(): React.JSX.Element {
     const cleanTitle = editRoleTitle.trim();
     if (!editRoleId || !cleanTitle || editSubmitting) return;
 
+    if (!canUpdate) {
+      showToast('You do not have permission to update roles.', 'error');
+      return;
+    }
+
     try {
       setEditSubmitting(true);
 
+      if (!apiBase) throw new Error('NEXT_PUBLIC_API_BASE_URL is missing');
+
       const accessToken = getAccessToken();
 
-      // ✅ endpoint you mentioned: update_roles (definition later)
-      // keeping it as: /admin/update_roles
       const res = await fetch(`${apiBase}/admin/update-role`, {
         method: 'POST',
         headers: {
@@ -340,6 +457,28 @@ export default function Page(): React.JSX.Element {
     }
   };
 
+  if (!permissionsLoaded) {
+    return (
+      <Stack spacing={3}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', py: 2 }}>
+          <CircularProgress size={22} />
+          <Typography variant="body2">Checking permissions...</Typography>
+        </Stack>
+      </Stack>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <Stack spacing={3}>
+        <Typography variant="h4">Roles</Typography>
+        <Alert severity="error" variant="filled">
+          You do not have permission to view roles.
+        </Alert>
+      </Stack>
+    );
+  }
+
   return (
     <Stack spacing={3}>
       <Stack direction="row" spacing={3}>
@@ -347,11 +486,13 @@ export default function Page(): React.JSX.Element {
           <Typography variant="h4">Roles</Typography>
         </Stack>
 
-        <div>
-          <Button startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />} variant="contained" onClick={openAddDialog}>
-            Add Role
-          </Button>
-        </div>
+        {canCreate ? (
+          <div>
+            <Button startIcon={<PlusIcon fontSize="var(--icon-fontSize-md)" />} variant="contained" onClick={openAddDialog}>
+              Add Role
+            </Button>
+          </div>
+        ) : null}
       </Stack>
 
       <RolesFilters search={search} onSearchChange={setSearch} />
@@ -372,12 +513,11 @@ export default function Page(): React.JSX.Element {
             setRowsPerPage(parseInt(e.target.value, 10));
             setPage(0);
           }}
-          onEdit={(role) => openEditDialog(role)}
-          onDelete={(role) => handleDeleteClick(role)}
+          onEdit={canUpdate ? (role) => openEditDialog(role) : undefined}
+          onDelete={canDelete ? (role) => handleDeleteClick(role) : undefined}
         />
       )}
 
-      {/* ✅ Add Role Dialog */}
       <Dialog open={addOpen} onClose={closeAddDialog} fullWidth maxWidth="sm">
         <DialogTitle>Add Role</DialogTitle>
         <DialogContent>
@@ -413,7 +553,6 @@ export default function Page(): React.JSX.Element {
         </DialogActions>
       </Dialog>
 
-      {/* ✅ Edit Role Dialog */}
       <Dialog open={editOpen} onClose={closeEditDialog} fullWidth maxWidth="sm">
         <DialogTitle>Edit Role</DialogTitle>
         <DialogContent>
@@ -449,21 +588,19 @@ export default function Page(): React.JSX.Element {
         </DialogActions>
       </Dialog>
 
-      {/* 🔴 Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
         <DialogTitle>Delete Role</DialogTitle>
         <DialogContent>
           <DialogContentText>Are you sure you want to delete "{selectedRole?.title}"?</DialogContentText>
         </DialogContent>
         <DialogActions>
-           <Button onClick={() => void handleDeleteConfirm()} color="error" variant="contained">
+          <Button onClick={() => void handleDeleteConfirm()} color="error" variant="contained">
             Delete
           </Button>
           <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
         </DialogActions>
       </Dialog>
 
-      {/* ✅ Toast */}
       <Snackbar
         open={toastOpen}
         autoHideDuration={3000}

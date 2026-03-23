@@ -34,7 +34,7 @@ export interface Listing {
   property_type: string | null;
   property_category: string | null;
   title: string | null;
-  active: number; // 0/1
+  active: number;
   furnishing: string | null;
   created_at: string | null;
 }
@@ -44,13 +44,11 @@ interface ListingsTableProps {
   page?: number;
   rows?: Listing[];
   rowsPerPage?: number;
-
   onPageChange?: (event: unknown, newPage: number) => void;
   onRowsPerPageChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
-
   onEdit?: (listing: Listing) => void;
   onDelete?: (listing: Listing) => void;
-  onToggle?: (listing: Listing) => void;
+  onToggle?: (listing: Listing) => void; // listings_update permission
 }
 
 function formatPrice(price: number | null): string {
@@ -65,8 +63,12 @@ function formatPrice(price: number | null): string {
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '-';
   const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr; // fallback if backend gives weird format
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export function ListingsTable({
@@ -80,6 +82,13 @@ export function ListingsTable({
   onDelete,
   onToggle,
 }: ListingsTableProps): React.JSX.Element {
+  const canToggle = Boolean(onToggle); // listings_update
+  const canEdit = Boolean(onEdit);
+  const canDelete = Boolean(onDelete);
+  const showActions = canEdit || canDelete;
+
+  const totalColumns = 11 + (canToggle ? 1 : 0) + (showActions ? 1 : 0);
+
   return (
     <Card>
       <Box sx={{ overflowX: 'auto' }}>
@@ -87,7 +96,7 @@ export function ListingsTable({
           <TableHead>
             <TableRow>
               <TableCell sx={{ fontWeight: 700 }}>Reference</TableCell>
-               <TableCell sx={{ fontWeight: 700 }}>Image</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Image</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Title</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Category</TableCell>
@@ -97,109 +106,125 @@ export function ListingsTable({
               <TableCell sx={{ fontWeight: 700 }}>Price</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Furnishing</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Created</TableCell>
-               <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-              {/* <TableCell align="right" sx={{ width: 140, fontWeight: 700 }}>
-                Actions
-              </TableCell> */}
+
+              {canToggle ? (
+                <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              ) : null}
+
+              {showActions ? (
+                <TableCell align="right" sx={{ width: 140, fontWeight: 700 }}>
+                  Actions
+                </TableCell>
+              ) : null}
             </TableRow>
           </TableHead>
 
           <TableBody>
-            {rows.map((row) => (
-              <TableRow hover key={row.id}>
-                <TableCell>
-                  <Typography variant="subtitle2">{row.reference || '-'}</Typography>
-                  {/* <Typography variant="caption" color="text.secondary">
-                    ID: {row.id}
-                  </Typography> */}
-                </TableCell>
-
-                <TableCell>
-  <Image
-    src={
-      row.first_image && row.first_image.trim() !== ''
-        ? usersImagesUrl(row.first_image)
-        : usersImagesUrl('default_user.avif')
-    }
-    alt={`${row.first_image}`}
-    width={100}
-    height={100}
-    style={{
-      borderRadius: '10%',
-      objectFit: 'cover',
-    }}
-  />
-</TableCell>
-
-                <TableCell>
-                  <Typography variant="subtitle2" noWrap title={row.title ?? ''}>
-                    {row.title ?? '-'}
-                  </Typography>
-                  {/* <Typography variant="caption" color="text.secondary" noWrap title={row.property ?? ''}>
-                    {row.property ?? ''}
-                  </Typography> */}
-                </TableCell>
-
-                <TableCell>{row.property_type ?? '-'}</TableCell>
-                <TableCell>{row.property_category ?? '-'}</TableCell>
-                <TableCell>{row.community ?? '-'}</TableCell>
-                <TableCell>{row.sub_community ?? '-'}</TableCell>
-                <TableCell>{row.property ?? '-'}</TableCell>
-
-                <TableCell>
-                  <Typography variant="subtitle2">{formatPrice(row.price)}</Typography>
-                </TableCell>
-
-                <TableCell>{row.furnishing ?? '-'}</TableCell>
-
-                <TableCell>
-                  <Typography variant="body2" color="text.secondary">
-                    {formatDate(row.created_at)}
-                  </Typography>
-                </TableCell>
-
-                <TableCell>
-                  <Switch
-                    checked={row.active === 1}
-                    onChange={() => onToggle?.(row)}
-                    sx={{
-                      '& .MuiSwitch-switchBase.Mui-checked': {
-                        color: '#0b4a35',
-                      },
-                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                        backgroundColor: '#0b4a35',
-                      },
-                    }}
-                  />
-                </TableCell>
-
-                {/* <TableCell align="right">
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Tooltip title="Edit">
-                      <IconButton size="small" onClick={() => onEdit?.(row)} sx={{ color: '#9f8151' }}>
-                        <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
-                      </IconButton>
-                    </Tooltip>
-
-                    <Tooltip title="Delete">
-                      <IconButton size="small" onClick={() => onDelete?.(row)} sx={{ color: '#FF0000' }}>
-                        <TrashIcon fontSize="var(--icon-fontSize-md)" />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </TableCell> */}
-              </TableRow>
-            ))}
-
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11}>
+                <TableCell colSpan={totalColumns}>
                   <Typography variant="body2" color="text.secondary">
                     No listing found.
                   </Typography>
                 </TableCell>
               </TableRow>
-            ) : null}
+            ) : (
+              rows.map((row) => (
+                <TableRow hover key={row.id}>
+                  <TableCell>
+                    <Typography variant="subtitle2">{row.reference || '-'}</Typography>
+                  </TableCell>
+
+                  <TableCell>
+                    <Image
+                      src={
+                        row.first_image && row.first_image.trim() !== ''
+                          ? usersImagesUrl(row.first_image)
+                          : usersImagesUrl('default_user.avif')
+                      }
+                      alt={row.first_image || 'Listing image'}
+                      width={100}
+                      height={100}
+                      style={{
+                        borderRadius: '10%',
+                        objectFit: 'cover',
+                      }}
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    <Typography variant="subtitle2" noWrap title={row.title ?? ''}>
+                      {row.title ?? '-'}
+                    </Typography>
+                  </TableCell>
+
+                  <TableCell>{row.property_type ?? '-'}</TableCell>
+                  <TableCell>{row.property_category ?? '-'}</TableCell>
+                  <TableCell>{row.community ?? '-'}</TableCell>
+                  <TableCell>{row.sub_community ?? '-'}</TableCell>
+                  <TableCell>{row.property ?? '-'}</TableCell>
+
+                  <TableCell>
+                    <Typography variant="subtitle2">{formatPrice(row.price)}</Typography>
+                  </TableCell>
+
+                  <TableCell>{row.furnishing ?? '-'}</TableCell>
+
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      {formatDate(row.created_at)}
+                    </Typography>
+                  </TableCell>
+
+                  {canToggle ? (
+                    <TableCell>
+                      <Switch
+                        checked={row.active === 1}
+                        onChange={() => onToggle?.(row)}
+                        sx={{
+                          '& .MuiSwitch-switchBase.Mui-checked': {
+                            color: '#0b4a35',
+                          },
+                          '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                            backgroundColor: '#0b4a35',
+                          },
+                        }}
+                      />
+                    </TableCell>
+                  ) : null}
+
+                  {showActions ? (
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        {canEdit ? (
+                          <Tooltip title="Edit">
+                            <IconButton
+                              size="small"
+                              onClick={() => onEdit?.(row)}
+                              sx={{ color: '#9f8151' }}
+                            >
+                              <PencilSimpleIcon fontSize="var(--icon-fontSize-md)" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : null}
+
+                        {canDelete ? (
+                          <Tooltip title="Delete">
+                            <IconButton
+                              size="small"
+                              onClick={() => onDelete?.(row)}
+                              sx={{ color: '#FF0000' }}
+                            >
+                              <TrashIcon fontSize="var(--icon-fontSize-md)" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : null}
+                      </Stack>
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </Box>

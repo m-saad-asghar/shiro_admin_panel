@@ -813,13 +813,6 @@ export default function EditProjectPage(): React.JSX.Element {
             helperText={errors.slug || 'Auto from name unless edited.'}
           />
 
-          <CkEditorField
-            label="Description"
-            value={project.description ?? ''}
-            onChange={(value) => setProject((p) => ({ ...p, description: value }))}
-            minHeight={220}
-          />
-
           <Stack spacing={1}>
             <Typography variant="subtitle2">Main Image</Typography>
 
@@ -946,6 +939,13 @@ export default function EditProjectPage(): React.JSX.Element {
             </Stack>
           </Stack>
 
+          <CkEditorField
+            label="Description"
+            value={project.description ?? ''}
+            onChange={(value) => setProject((p) => ({ ...p, description: value }))}
+            minHeight={220}
+          />
+
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
             <FormControl fullWidth error={Boolean(errors.community_id)} disabled={loadingDropdowns || saving}>
               <Autocomplete
@@ -1042,46 +1042,148 @@ export default function EditProjectPage(): React.JSX.Element {
         </Stack>
       </Paper>
 
-      {/* AMENITIES */}
+      {/* GALLERY */}
       <Paper sx={{ p: 3 }}>
-        <Typography variant="h6">Amenities</Typography>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Typography variant="h6">Gallery Images</Typography>
+          <Button startIcon={<AddIcon />} variant="outlined" onClick={() => setImages((prev) => [...prev, { image: '' }])}>
+            Add Image
+          </Button>
+        </Stack>
+
         <Divider sx={{ my: 2 }} />
 
-        <FormControl fullWidth disabled={loadingDropdowns || saving}>
-          <Autocomplete
-            multiple
-            options={amenities}
-            value={amenities.filter((a) => selectedAmenityIds.includes(a.id))}
-            onChange={(_, newValue) => setSelectedAmenityIds(newValue.map((a) => a.id))}
-            getOptionLabel={(option) => option?.name ?? ''}
-            isOptionEqualToValue={(option, value) => option.id === value.id}
-            disableCloseOnSelect
-            ListboxProps={{ style: { maxHeight: 300, overflow: 'auto' } }}
-            renderTags={(value, getTagProps) =>
-              value.map((option, index) => (
-                <Chip
-                  {...getTagProps({ index })}
-                  key={option.id}
-                  label={option.name}
-                  sx={{
-                    height: 36,
-                    fontSize: '0.95rem',
-                    backgroundColor: '#094834',
-                    color: '#fff',
-                    '& .MuiChip-deleteIcon': {
-                      color: '#fff',
-                      '&:hover': { color: '#ddd' },
-                    },
-                  }}
-                />
-              ))
-            }
-            renderInput={(params) => <TextField {...params} label="Select Amenities" />}
-          />
-        </FormControl>
+        <Stack spacing={2}>
+          {images.map((im, idx) => (
+            <Paper key={im.id ?? idx} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={2}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="subtitle1">Image #{idx + 1}</Typography>
+                  <IconButton
+                    onClick={() => {
+                      const input = galleryInputRefs.current[idx];
+                      if (input) input.value = '';
+                      setGalleryFileAt(idx, null);
+                      setImages((prev) => prev.filter((_, i) => i !== idx));
+                    }}
+                    sx={{ color: TRASH_COLOR }}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Stack>
+
+                <Stack spacing={1}>
+                  <Typography variant="subtitle2">Image *</Typography>
+
+                  {!galleryPreviews[idx] && im.image ? (
+                    projectsImagesUrl(im.image) ? (
+                      <Box
+                        sx={{
+                          width: 260,
+                          height: 160,
+                          borderRadius: 2,
+                          border: '1px solid rgba(0,0,0,0.15)',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: '#fafafa',
+                        }}
+                      >
+                        <img
+                          src={projectsImagesUrl(im.image) as string}
+                          alt={`Gallery ${idx + 1}`}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" sx={{ opacity: 0.75 }}>
+                        Current file: {im.image}
+                      </Typography>
+                    )
+                  ) : null}
+
+                  {galleryPreviews[idx] ? (
+                    <Box
+                      sx={{
+                        width: 260,
+                        height: 160,
+                        borderRadius: 2,
+                        border: '1px solid rgba(0,0,0,0.15)',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: '#fafafa',
+                      }}
+                    >
+                      <img
+                        src={galleryPreviews[idx] as string}
+                        alt={`Gallery ${idx + 1} preview`}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    </Box>
+                  ) : null}
+
+                  <Stack direction="row" spacing={2} alignItems="center">
+                    <Button variant="outlined" component="label" disabled={saving}>
+                      {im.image ? 'Replace Image' : 'Upload Image'}
+                      <input
+                        ref={(el) => {
+                          galleryInputRefs.current[idx] = el;
+                        }}
+                        type="file"
+                        hidden
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          setGalleryFileAt(idx, file);
+                          setImages((prev) => prev.map((x, i) => (i === idx ? { ...x, image: file ? file.name : x.image } : x)));
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                    </Button>
+
+                    {(galleryFiles[idx] || im.image) ? (
+                      <Button
+                        variant="text"
+                        disabled={saving}
+                        sx={{ color: TRASH_COLOR }}
+                        onClick={() => {
+                          const input = galleryInputRefs.current[idx];
+                          if (input) input.value = '';
+                          setGalleryFileAt(idx, null);
+                          setImages((prev) => prev.map((x, i) => (i === idx ? { ...x, image: '' } : x)));
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    ) : null}
+
+                    {galleryFiles[idx] ? (
+                      <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                        New: {galleryFiles[idx]?.name}
+                      </Typography>
+                    ) : im.image ? (
+                      <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                        Current: {im.image}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+
+                  {errors[`images.${idx}.image`] ? (
+                    <Typography variant="caption" color="error">
+                      {errors[`images.${idx}.image`]}
+                    </Typography>
+                  ) : null}
+                </Stack>
+              </Stack>
+            </Paper>
+          ))}
+        </Stack>
       </Paper>
 
-      {/* USP */}
+       {/* USP */}
       <Paper sx={{ p: 3 }}>
         <Typography variant="h6">Unique Selling Point (Single)</Typography>
         <Divider sx={{ my: 2 }} />
@@ -1190,59 +1292,6 @@ export default function EditProjectPage(): React.JSX.Element {
               ) : null}
             </Stack>
           </Stack>
-        </Stack>
-      </Paper>
-
-      {/* FAQS */}
-      <Paper sx={{ p: 3 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="h6">FAQs</Typography>
-          <Button startIcon={<AddIcon />} variant="outlined" onClick={() => setFaqs((prev) => [...prev, { title: '', description: '' }])}>
-            Add FAQ
-          </Button>
-        </Stack>
-
-        <Divider sx={{ my: 2 }} />
-
-        <Stack spacing={2}>
-          {faqs.map((f, idx) => (
-            <Paper key={f.id ?? idx} variant="outlined" sx={{ p: 2 }}>
-              <Stack spacing={2}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="subtitle1">FAQ #{idx + 1}</Typography>
-                  <IconButton onClick={() => setFaqs((prev) => prev.filter((_, i) => i !== idx))} sx={{ color: TRASH_COLOR }}>
-                    <DeleteIcon />
-                  </IconButton>
-                </Stack>
-
-                <TextField
-                  label="Title *"
-                  value={f.title}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFaqs((prev) => prev.map((x, i) => (i === idx ? { ...x, title: v } : x)));
-                  }}
-                  fullWidth
-                  error={Boolean(errors[`faqs.${idx}.title`])}
-                  helperText={errors[`faqs.${idx}.title`] || ''}
-                />
-
-                <TextField
-                  label="Description *"
-                  value={f.description}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFaqs((prev) => prev.map((x, i) => (i === idx ? { ...x, description: v } : x)));
-                  }}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  error={Boolean(errors[`faqs.${idx}.description`])}
-                  helperText={errors[`faqs.${idx}.description`] || ''}
-                />
-              </Stack>
-            </Paper>
-          ))}
         </Stack>
       </Paper>
 
@@ -1399,148 +1448,111 @@ export default function EditProjectPage(): React.JSX.Element {
         </Stack>
       </Paper>
 
-      {/* GALLERY */}
+      {/* AMENITIES */}
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6">Amenities</Typography>
+        <Divider sx={{ my: 2 }} />
+
+        <FormControl fullWidth disabled={loadingDropdowns || saving}>
+          <Autocomplete
+            multiple
+            options={amenities}
+            value={amenities.filter((a) => selectedAmenityIds.includes(a.id))}
+            onChange={(_, newValue) => setSelectedAmenityIds(newValue.map((a) => a.id))}
+            getOptionLabel={(option) => option?.name ?? ''}
+            isOptionEqualToValue={(option, value) => option.id === value.id}
+            disableCloseOnSelect
+            ListboxProps={{ style: { maxHeight: 300, overflow: 'auto' } }}
+            renderTags={(value, getTagProps) =>
+              value.map((option, index) => (
+                <Chip
+                  {...getTagProps({ index })}
+                  key={option.id}
+                  label={option.name}
+                  sx={{
+                    height: 36,
+                    fontSize: '0.95rem',
+                    backgroundColor: '#094834',
+                    color: '#fff',
+                    '& .MuiChip-deleteIcon': {
+                      color: '#fff',
+                      '&:hover': { color: '#ddd' },
+                    },
+                  }}
+                />
+              ))
+            }
+            renderInput={(params) => <TextField {...params} label="Select Amenities" />}
+          />
+        </FormControl>
+      </Paper>
+
+      {/* LOCATIONS */}
       <Paper sx={{ p: 3 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="h6">Gallery Images</Typography>
-          <Button startIcon={<AddIcon />} variant="outlined" onClick={() => setImages((prev) => [...prev, { image: '' }])}>
-            Add Image
+          <Typography variant="h6">Locations</Typography>
+          <Button
+            startIcon={<AddIcon />}
+            variant="outlined"
+            disabled={locations.length > 0}
+            onClick={() => setLocations((prev) => [...prev, { title: '', description: '', map_link: '' }])}
+          >
+            Add Location
           </Button>
         </Stack>
 
         <Divider sx={{ my: 2 }} />
 
         <Stack spacing={2}>
-          {images.map((im, idx) => (
-            <Paper key={im.id ?? idx} variant="outlined" sx={{ p: 2 }}>
+          {locations.map((loc, idx) => (
+            <Paper key={loc.id ?? idx} variant="outlined" sx={{ p: 2 }}>
               <Stack spacing={2}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="subtitle1">Image #{idx + 1}</Typography>
-                  <IconButton
-                    onClick={() => {
-                      const input = galleryInputRefs.current[idx];
-                      if (input) input.value = '';
-                      setGalleryFileAt(idx, null);
-                      setImages((prev) => prev.filter((_, i) => i !== idx));
-                    }}
-                    sx={{ color: TRASH_COLOR }}
-                  >
+                  <Typography variant="subtitle1">Location #{idx + 1}</Typography>
+                  <IconButton onClick={() => setLocations((prev) => prev.filter((_, i) => i !== idx))} sx={{ color: TRASH_COLOR }}>
                     <DeleteIcon />
                   </IconButton>
                 </Stack>
 
-                <Stack spacing={1}>
-                  <Typography variant="subtitle2">Image *</Typography>
+                <TextField
+                  label="Title *"
+                  value={loc.title}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setLocations((prev) => prev.map((x, i) => (i === idx ? { ...x, title: v } : x)));
+                  }}
+                  fullWidth
+                  error={Boolean(errors[`locations.${idx}.title`])}
+                  helperText={errors[`locations.${idx}.title`] || ''}
+                />
 
-                  {!galleryPreviews[idx] && im.image ? (
-                    projectsImagesUrl(im.image) ? (
-                      <Box
-                        sx={{
-                          width: 260,
-                          height: 160,
-                          borderRadius: 2,
-                          border: '1px solid rgba(0,0,0,0.15)',
-                          overflow: 'hidden',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: '#fafafa',
-                        }}
-                      >
-                        <img
-                          src={projectsImagesUrl(im.image) as string}
-                          alt={`Gallery ${idx + 1}`}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                      </Box>
-                    ) : (
-                      <Typography variant="body2" sx={{ opacity: 0.75 }}>
-                        Current file: {im.image}
-                      </Typography>
-                    )
-                  ) : null}
+                <CkEditorField
+                  label="Description *"
+                  value={loc.description}
+                  onChange={(value) => {
+                    setLocations((prev) => prev.map((x, i) => (i === idx ? { ...x, description: value } : x)));
+                  }}
+                  error={Boolean(errors[`locations.${idx}.description`])}
+                  helperText={errors[`locations.${idx}.description`] || ''}
+                  minHeight={180}
+                />
 
-                  {galleryPreviews[idx] ? (
-                    <Box
-                      sx={{
-                        width: 260,
-                        height: 160,
-                        borderRadius: 2,
-                        border: '1px solid rgba(0,0,0,0.15)',
-                        overflow: 'hidden',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: '#fafafa',
-                      }}
-                    >
-                      <img
-                        src={galleryPreviews[idx] as string}
-                        alt={`Gallery ${idx + 1} preview`}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    </Box>
-                  ) : null}
-
-                  <Stack direction="row" spacing={2} alignItems="center">
-                    <Button variant="outlined" component="label" disabled={saving}>
-                      {im.image ? 'Replace Image' : 'Upload Image'}
-                      <input
-                        ref={(el) => {
-                          galleryInputRefs.current[idx] = el;
-                        }}
-                        type="file"
-                        hidden
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0] ?? null;
-                          setGalleryFileAt(idx, file);
-                          setImages((prev) => prev.map((x, i) => (i === idx ? { ...x, image: file ? file.name : x.image } : x)));
-                          e.currentTarget.value = '';
-                        }}
-                      />
-                    </Button>
-
-                    {(galleryFiles[idx] || im.image) ? (
-                      <Button
-                        variant="text"
-                        disabled={saving}
-                        sx={{ color: TRASH_COLOR }}
-                        onClick={() => {
-                          const input = galleryInputRefs.current[idx];
-                          if (input) input.value = '';
-                          setGalleryFileAt(idx, null);
-                          setImages((prev) => prev.map((x, i) => (i === idx ? { ...x, image: '' } : x)));
-                        }}
-                      >
-                        Remove
-                      </Button>
-                    ) : null}
-
-                    {galleryFiles[idx] ? (
-                      <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                        New: {galleryFiles[idx]?.name}
-                      </Typography>
-                    ) : im.image ? (
-                      <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                        Current: {im.image}
-                      </Typography>
-                    ) : null}
-                  </Stack>
-
-                  {errors[`images.${idx}.image`] ? (
-                    <Typography variant="caption" color="error">
-                      {errors[`images.${idx}.image`]}
-                    </Typography>
-                  ) : null}
-                </Stack>
+                <TextField
+                  label="Map Link (optional)"
+                  value={loc.map_link ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setLocations((prev) => prev.map((x, i) => (i === idx ? { ...x, map_link: v } : x)));
+                  }}
+                  fullWidth
+                />
               </Stack>
             </Paper>
           ))}
         </Stack>
       </Paper>
 
-      {/* PAYMENT PLANS */}
+       {/* PAYMENT PLANS */}
       <Paper sx={{ p: 3 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="h6">Payment Plans</Typography>
@@ -1603,64 +1615,52 @@ export default function EditProjectPage(): React.JSX.Element {
         </Stack>
       </Paper>
 
-      {/* LOCATIONS */}
+      {/* FAQS */}
       <Paper sx={{ p: 3 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="h6">Locations</Typography>
-          <Button
-            startIcon={<AddIcon />}
-            variant="outlined"
-            disabled={locations.length > 0}
-            onClick={() => setLocations((prev) => [...prev, { title: '', description: '', map_link: '' }])}
-          >
-            Add Location
+          <Typography variant="h6">FAQs</Typography>
+          <Button startIcon={<AddIcon />} variant="outlined" onClick={() => setFaqs((prev) => [...prev, { title: '', description: '' }])}>
+            Add FAQ
           </Button>
         </Stack>
 
         <Divider sx={{ my: 2 }} />
 
         <Stack spacing={2}>
-          {locations.map((loc, idx) => (
-            <Paper key={loc.id ?? idx} variant="outlined" sx={{ p: 2 }}>
+          {faqs.map((f, idx) => (
+            <Paper key={f.id ?? idx} variant="outlined" sx={{ p: 2 }}>
               <Stack spacing={2}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="subtitle1">Location #{idx + 1}</Typography>
-                  <IconButton onClick={() => setLocations((prev) => prev.filter((_, i) => i !== idx))} sx={{ color: TRASH_COLOR }}>
+                  <Typography variant="subtitle1">FAQ #{idx + 1}</Typography>
+                  <IconButton onClick={() => setFaqs((prev) => prev.filter((_, i) => i !== idx))} sx={{ color: TRASH_COLOR }}>
                     <DeleteIcon />
                   </IconButton>
                 </Stack>
 
                 <TextField
                   label="Title *"
-                  value={loc.title}
+                  value={f.title}
                   onChange={(e) => {
                     const v = e.target.value;
-                    setLocations((prev) => prev.map((x, i) => (i === idx ? { ...x, title: v } : x)));
+                    setFaqs((prev) => prev.map((x, i) => (i === idx ? { ...x, title: v } : x)));
                   }}
                   fullWidth
-                  error={Boolean(errors[`locations.${idx}.title`])}
-                  helperText={errors[`locations.${idx}.title`] || ''}
-                />
-
-                <CkEditorField
-                  label="Description *"
-                  value={loc.description}
-                  onChange={(value) => {
-                    setLocations((prev) => prev.map((x, i) => (i === idx ? { ...x, description: value } : x)));
-                  }}
-                  error={Boolean(errors[`locations.${idx}.description`])}
-                  helperText={errors[`locations.${idx}.description`] || ''}
-                  minHeight={180}
+                  error={Boolean(errors[`faqs.${idx}.title`])}
+                  helperText={errors[`faqs.${idx}.title`] || ''}
                 />
 
                 <TextField
-                  label="Map Link (optional)"
-                  value={loc.map_link ?? ''}
+                  label="Description *"
+                  value={f.description}
                   onChange={(e) => {
                     const v = e.target.value;
-                    setLocations((prev) => prev.map((x, i) => (i === idx ? { ...x, map_link: v } : x)));
+                    setFaqs((prev) => prev.map((x, i) => (i === idx ? { ...x, description: v } : x)));
                   }}
                   fullWidth
+                  multiline
+                  minRows={3}
+                  error={Boolean(errors[`faqs.${idx}.description`])}
+                  helperText={errors[`faqs.${idx}.description`] || ''}
                 />
               </Stack>
             </Paper>
